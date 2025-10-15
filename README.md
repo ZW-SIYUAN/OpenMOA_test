@@ -1,10 +1,10 @@
-# [CapyMOA](https://capymoa.org)
+# [OpenMOA](https://openmoa.net)
 
-![Banner Image](https://github.com/adaptive-machine-learning/CapyMOA/raw/main/docs/images/CapyMOA.jpeg)
+![Banner Image]()
 
 [![PyPi Version](https://img.shields.io/pypi/v/capymoa)](https://pypi.org/project/capymoa/)
 [![Join the Discord](https://img.shields.io/discord/1235780483845984367?label=Discord)](https://discord.gg/spd2gQJGAb)
-[![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://capymoa.org)
+[![Documentation](https://img.shields.io/badge/docs-latest-blue)](https://openmoa.net)
 [![GitHub](https://img.shields.io/github/stars/adaptive-machine-learning/CapyMOA?style=social)](https://github.com/adaptive-machine-learning/CapyMOA)
 
 
@@ -48,21 +48,21 @@ was performed using an ensemble of 100 ARF learners trained on
 `capymoa.datasets.RTG_2abrupt` dataset containing 100,000 samples and 30
 features.  You can find the code to reproduce this benchmark in
 [`notebooks/benchmarking.py`](https://github.com/adaptive-machine-learning/CapyMOA/blob/main/notebooks/benchmarking.py).
-*CapyMOA has the speed of MOA with the flexibility of Python and the richness of
+*OpenMOA has the speed of MOA with the flexibility of Python and the richness of
 Python's data science ecosystem.*
 
 ## Cite Us 
 
-If you use CapyMOA in your research, please cite us using the following BibTeX item.
+If you use OpenMOA in your research, please cite us using the following BibTeX item.
 ```
 @misc{
     gomes2025capymoaefficientmachinelearning,
-    title={{CapyMOA}: Efficient Machine Learning for Data Streams in Python},
-    author={Heitor Murilo Gomes and Anton Lee and Nuwan Gunasekara and Yibin Sun and Guilherme Weigert Cassales and Justin Jia Liu and Marco Heyden and Vitor Cerqueira and Maroua Bahri and Yun Sing Koh and Bernhard Pfahringer and Albert Bifet},
+    title={{OpenMOA}: Efficient Machine Learning for Data Streams in Python},
+    author={Zhili Wang, Yi He},
     year={2025},
-    eprint={2502.07432},
+    eprint={},
     archivePrefix={arXiv},
     primaryClass={cs.LG},
-    url={https://arxiv.org/abs/2502.07432},
+    url={https://arxiv.org/abs/},
 }
 ```
