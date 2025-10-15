@@ -42,7 +42,7 @@ python -c "import capymoa; print(capymoa.__version__)"
 
 ---
 
-![Benchmark Image](https://github.com/adaptive-machine-learning/CapyMOA/raw/main/docs/images/arf100_cpu_time.png)
+![Benchmark Image]()
 Benchmark comparing CapyMOA against other data stream libraries. The benchmark
 was performed using an ensemble of 100 ARF learners trained on
 `capymoa.datasets.RTG_2abrupt` dataset containing 100,000 samples and 30
