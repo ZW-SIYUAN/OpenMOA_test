@@ -1,2 +1,0 @@
-Algorithm,MAE,RMSE,R2,Total_Instances,Wallclock_Time_sec,CPU_Time_sec
-FESLRegressor,3.325721423014443,4.397078246752798,0.21943062748929099,10000,<bound method PrequentialResults.wallclock of <capymoa.evaluation.results.PrequentialResults object at 0x000001CE363974D0>>,<bound method PrequentialResults.cpu_time of <capymoa.evaluation.results.PrequentialResults object at 0x000001CE363974D0>>

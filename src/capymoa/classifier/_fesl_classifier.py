@@ -242,7 +242,7 @@ class FESLClassifier(Classifier):
         :param t: Time step for learning rate
         """
         pred = np.dot(w, x)
-        tau = self.tau_scale * np.sqrt(t)
+        tau = 1.0 / (self.tau_scale * np.sqrt(t))
         
         # Logistic loss gradient
         exp_term = np.exp(-y * pred)
@@ -250,6 +250,7 @@ class FESLClassifier(Classifier):
         
         w += tau * gradient
 
+    '''
     def _learn_mapping(self):
         """Learn linear mapping M from S2 to S1 using least squares."""
         if len(self.overlap_X1) == 0:
@@ -265,6 +266,22 @@ class FESLClassifier(Classifier):
             self.M = np.linalg.lstsq(X2, X1, rcond=None)[0].T
         except np.linalg.LinAlgError:
             # Fallback to pseudo-inverse if singular
+            self.M = np.zeros((self.d1, self.d2))
+    '''
+    def _learn_mapping(self):
+        """Learn linear mapping M from S2 to S1 using least squares."""
+        if len(self.overlap_X1) < 2:
+            self.M = np.zeros((self.d1, self.d2))
+            return
+        
+        X1 = np.array(self.overlap_X1)  # (B, d1)
+        X2 = np.array(self.overlap_X2)  # (B, d2)
+        
+        try:
+            # 直接用伪逆：M = X1.T @ pinv(X2.T)
+            # 或者：M.T = pinv(X2) @ X1，所以 M = X1.T @ pinv(X2)
+            self.M = X1.T @ np.linalg.pinv(X2.T)  # (d1, d2)
+        except np.linalg.LinAlgError:
             self.M = np.zeros((self.d1, self.d2))
 
     def _logistic_loss(self, pred: float, y: float) -> float:
