@@ -1018,3 +1018,318 @@ class ConcatStream(Stream[_AnyInstance]):
                 "Only supports ``len()`` if contained streams have a length."
             )
         return self._length
+
+class LibsvmStream(Stream):
+    """Stream for LIBSVM format files."""
+
+    def __init__(
+        self,
+        path: Union[str, Path],
+        dataset_name: str = "LibsvmDataset",
+        target_type: str = "categorical",
+    ):
+        self.path = Path(path)
+        if not self.path.exists():
+            raise FileNotFoundError(f"File not found: {self.path}")
+
+        self.dataset_name = dataset_name
+        self.target_type = target_type
+        self.current_line_number = 0
+
+        # Scan file to determine structure
+        self._max_feature_id = 0
+        self._labels = set()
+        self._num_instances = 0
+        self._is_regression = target_type == "numeric"
+
+        print(f"Scanning {self.path.name}...")
+        self._scan_file()
+        print(f"  Instances: {self._num_instances}")
+        print(f"  Max feature ID: {self._max_feature_id}")
+        if not self._is_regression:
+            print(f"  Classes: {sorted(self._labels)}")
+
+        # ✅ 存储所有实例的稀疏特征
+        self._sparse_features_cache = {}
+        
+        # ✅ 创建标签映射 (LIBSVM label -> class index)
+        self._label_to_index = {label: idx for idx, label in enumerate(sorted(self._labels))}
+        print(f"  Label mapping: {self._label_to_index}")
+
+        # Create schema
+        self.schema = self._create_schema()
+
+    def _scan_file(self):
+        """First pass: determine file structure."""
+        with open(self.path, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                self._num_instances += 1
+                parts = line.split()
+
+                # Parse label
+                label = float(parts[0])
+                if not self._is_regression:
+                    self._labels.add(int(label))
+
+                # Find max feature ID
+                for item in parts[1:]:
+                    if ':' not in item:
+                        continue
+                    fid = int(item.split(':')[0])
+                    self._max_feature_id = max(self._max_feature_id, fid)
+
+    def _create_schema(self) -> Schema:
+        """Create CapyMOA Schema for this stream."""
+        attributes = FastVector()
+
+        # For extremely sparse high-dimensional data, create a single attribute
+        attr = Attribute("sparse_features")
+        attributes.addElement(attr)
+
+        # Target attribute
+        if self._is_regression:
+            target_attr = Attribute("target")
+        else:
+            label_values = FastVector()
+            # ✅ 使用排序后的标签创建类别
+            for label in sorted(self._labels):
+                label_values.addElement(str(int(label)))
+            target_attr = Attribute("class", label_values)
+
+        attributes.addElement(target_attr)
+
+        # Create MOA instances and header
+        moa_instances = Instances(
+            self.dataset_name,
+            attributes,
+            self._num_instances
+        )
+        moa_instances.setClassIndex(len(attributes) - 1)
+        moa_header = InstancesHeader(moa_instances)
+
+        return Schema(moa_header=moa_header)
+
+    def has_more_instances(self) -> bool:
+        """Check if more instances available."""
+        return self.current_line_number < self._num_instances
+
+    def next_instance(self) -> Union[LabeledInstance, RegressionInstance]:
+        """Get next instance from stream."""
+        if not self.has_more_instances():
+            raise StopIteration()
+
+        with open(self.path, 'r', encoding='utf-8', errors='ignore') as f:
+            line_count = 0
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                if line_count == self.current_line_number:
+                    instance_id = self.current_line_number
+                    self.current_line_number += 1
+                    return self._parse_libsvm_line(line, instance_id)
+                
+                line_count += 1
+
+        raise StopIteration()
+
+    def _parse_libsvm_line(self, line: str, instance_id: int) -> Union[LabeledInstance, RegressionInstance]:
+        """Parse LIBSVM line into CapyMOA Instance with sparse features."""
+        parts = line.split()
+        label = float(parts[0])
+
+        # Parse sparse features
+        sparse_features = {}
+        for item in parts[1:]:
+            if ':' not in item:
+                continue
+            fid, value = item.split(':')
+            sparse_features[int(fid)] = float(value)
+
+        # ✅ 存储稀疏特征
+        self._sparse_features_cache[instance_id] = sparse_features
+
+        # Create instance with dummy dense array
+        dummy_x = np.zeros(1)
+
+        if self._is_regression:
+            instance = RegressionInstance.from_array(
+                self.schema, dummy_x, float(label)
+            )
+        else:
+            # ✅ 修复：使用映射将 LIBSVM 标签转换为类别索引
+            label_index = self._label_to_index[int(label)]
+            
+            instance = LabeledInstance.from_array(
+                self.schema, dummy_x, label_index
+            )
+
+        # ✅ 添加自定义属性存储稀疏特征
+        instance._sparse_x = sparse_features
+
+        return instance
+
+    def get_schema(self) -> Schema:
+        """Return stream schema."""
+        return self.schema
+
+    def restart(self):
+        """Restart stream from beginning."""
+        self.current_line_number = 0
+        self._sparse_features_cache.clear()
+
+    def __len__(self) -> int:
+        """Return number of instances."""
+        return self._num_instances
+
+    def __str__(self) -> str:
+        """String representation."""
+        return (f"LibsvmStream('{self.path.name}', "
+                f"instances={self._num_instances}, "
+                f"max_feature_id={self._max_feature_id})")
+    
+class BagOfWordsStream(Stream):
+    """Stream for bag-of-words .review files."""
+
+    def __init__(
+        self,
+        positive_file: Path,
+        negative_file: Path,
+        dataset_name: str = "BagOfWords",
+        normalize: bool = True,
+        shuffle_seed: int = None
+    ):
+        self.positive_file = Path(positive_file)
+        self.negative_file = Path(negative_file)
+        self.dataset_name = dataset_name
+        self.normalize = normalize
+        self.shuffle_seed = shuffle_seed
+
+        # Parse all instances
+        self.instances = []
+        self._parse_files()
+
+        # Shuffle if requested
+        if shuffle_seed is not None:
+            np.random.seed(shuffle_seed)
+            np.random.shuffle(self.instances)
+
+        self.current_index = 0
+        self.schema = self._create_schema()
+
+        print(f"Loaded {self.dataset_name}:")
+        print(f"  Total instances: {len(self.instances)}")
+        print(f"  Positive: {sum(1 for _, label in self.instances if label == 1)}")
+        print(f"  Negative: {sum(1 for _, label in self.instances if label == 0)}")
+
+    def _parse_files(self):
+        """Parse positive and negative files."""
+        # Parse positive
+        with open(self.positive_file, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                features = self._parse_line(line)
+                if features:
+                    self.instances.append((features, 1))  # Positive = 1
+
+        # Parse negative
+        with open(self.negative_file, 'r', encoding='utf-8', errors='ignore') as f:
+            for line in f:
+                features = self._parse_line(line)
+                if features:
+                    self.instances.append((features, 0))  # Negative = 0
+
+    def _parse_line(self, line: str) -> Dict[str, float]:
+        """Parse bag-of-words line."""
+        line = line.strip()
+        if not line:
+            return None
+
+        tokens = line.split()
+        features = {}
+
+        for token in tokens:
+            if token.startswith('#label#:'):
+                continue
+            
+            if ':' in token:
+                word, count_str = token.rsplit(':', 1)
+                try:
+                    count = float(count_str)
+                    if count > 0:
+                        features[word] = count
+                except ValueError:
+                    continue
+
+        # Normalize to unit length
+        if self.normalize and features:
+            norm = np.sqrt(sum(v**2 for v in features.values()))
+            if norm > 0:
+                features = {k: v/norm for k, v in features.items()}
+
+        return features if features else None
+
+    def _create_schema(self) -> Schema:
+        """Create schema with binary classification."""
+        attributes = FastVector()
+
+        # Single attribute for sparse features
+        attr = Attribute("bag_of_words")
+        attributes.addElement(attr)
+
+        # Binary class attribute
+        label_values = FastVector()
+        label_values.addElement("0")
+        label_values.addElement("1")
+        target_attr = Attribute("class", label_values)
+        attributes.addElement(target_attr)
+
+        moa_instances = Instances(
+            self.dataset_name,
+            attributes,
+            len(self.instances)
+        )
+        moa_instances.setClassIndex(1)
+        moa_header = InstancesHeader(moa_instances)
+
+        return Schema(moa_header=moa_header)
+
+    def has_more_instances(self) -> bool:
+        """Check if more instances available."""
+        return self.current_index < len(self.instances)
+
+    def next_instance(self) -> LabeledInstance:
+        """Get next instance."""
+        if not self.has_more_instances():
+            raise StopIteration()
+
+        features, label = self.instances[self.current_index]
+        self.current_index += 1
+
+        # Create instance with dummy dense array
+        dummy_x = np.zeros(1)
+        instance = LabeledInstance.from_array(self.schema, dummy_x, label)
+        
+        # ✅ 添加自定义属性存储稀疏特征
+        instance._sparse_x = features
+
+        return instance
+
+    def get_schema(self) -> Schema:
+        """Return schema."""
+        return self.schema
+
+    def restart(self):
+        """Restart stream."""
+        self.current_index = 0
+
+    def __len__(self) -> int:
+        """Return number of instances."""
+        return len(self.instances)
+
+    def __str__(self) -> str:
+        return f"BagOfWordsStream({self.dataset_name}, instances={len(self.instances)})"

@@ -1,0 +1,20 @@
+================================================================================
+UNIFIED FTRL EXPERIMENT RESULTS
+McMahan et al. (2011) Complete Replication
+================================================================================
+
+Implementation:
+  - Sparse FTRL with lazy weight computation
+  - BagOfWordsStream for sentiment datasets
+  - LibsvmStream for rcv1/news20 datasets
+
+================================================================================
+SENTIMENT DATASETS (5 shuffles averaged)
+================================================================================
+
+Dataset         Avg Accuracy         Best Alpha
+--------------------------------------------------------------------------------
+books           72.700 (1.000)     1.9
+dvd             74.300 (1.000)     1.9
+electronics     78.090 (1.000)     1.9
+kitchen         79.920 (1.000)     1.1

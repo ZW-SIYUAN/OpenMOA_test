@@ -1,0 +1,29 @@
+Summary Results
+Dataset,Best Alpha,Avg Accuracy,Std Accuracy,Avg Density,Std Density,Avg Sparsity,Std Sparsity
+books,1.9,71.560,0.721,0.105,0.001,0.895,0.001
+dvd,1.9,73.530,0.208,0.105,0.001,0.895,0.001
+electronics,1.9,77.410,0.216,0.151,0.001,0.849,0.001
+kitchen,1.9,79.180,0.540,0.182,0.002,0.818,0.002
+
+Detailed Results by Shuffle
+Dataset,Shuffle,Accuracy,Sparsity,Density
+books,1,71.200,0.893,0.107
+books,2,72.600,0.895,0.105
+books,3,70.850,0.896,0.104
+books,4,71.150,0.895,0.105
+books,5,72.000,0.896,0.104
+dvd,1,73.650,0.896,0.104
+dvd,2,73.750,0.897,0.103
+dvd,3,73.200,0.895,0.105
+dvd,4,73.550,0.895,0.105
+dvd,5,73.500,0.895,0.105
+electronics,1,77.150,0.849,0.151
+electronics,2,77.600,0.850,0.150
+electronics,3,77.650,0.849,0.151
+electronics,4,77.250,0.848,0.152
+electronics,5,77.400,0.849,0.151
+kitchen,1,79.800,0.821,0.179
+kitchen,2,79.000,0.818,0.182
+kitchen,3,78.600,0.818,0.182
+kitchen,4,78.800,0.816,0.184
+kitchen,5,79.700,0.819,0.181

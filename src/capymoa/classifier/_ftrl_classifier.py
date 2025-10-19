@@ -1,6 +1,13 @@
-"""capymoa/classifier/_ftrl_classifier.py"""
+"""
+FTRL Classifier - Final Production Version
+Implements Follow-The-Regularized-Leader algorithm from McMahan (2011)
+Optimized for both sparse and dense features
+"""
+
 from __future__ import annotations
 import numpy as np
+from typing import Union, Dict, Optional
+from collections import defaultdict
 
 from capymoa.base import Classifier
 from capymoa.stream import Schema
@@ -8,16 +15,19 @@ from capymoa.instance import Instance
 
 
 class FTRLClassifier(Classifier):
-    """Follow-The-Regularized-Leader (FTRL) for Online Learning.
+    """Follow-The-Regularized-Leader (FTRL-Proximal) Classifier.
     
     Reference:
-    McMahan, H. B., et al. (2013). Ad Click Prediction: A View from the Trenches.
+    McMahan, H. B. (2011). Follow-the-Regularized-Leader and Mirror Descent:
+    Equivalence Theorems and L1 Regularization. AISTATS 2011.
     
-    Example:
-    >>> from capymoa.datasets import Electricity
-    >>> from capymoa.classifier import FTRLClassifier
-    >>> stream = Electricity()
-    >>> learner = FTRLClassifier(schema=stream.get_schema())
+    Supports both sparse high-dimensional data (rcv1, news20) and dense data (Electricity).
+    
+    Parameters:
+        alpha: Learning rate parameter (default 0.5)
+        beta: Smoothing parameter for adaptive learning rate (default 1.0)
+        l1: L1 regularization strength - induces sparsity (default 0.1)
+        l2: L2 regularization strength - smoothing (default 1.0)
     """
 
     def __init__(
@@ -48,58 +58,141 @@ class FTRLClassifier(Classifier):
         self.l1 = l1
         self.l2 = l2
         
-        # Initialize FTRL state
-        n_features = schema.get_num_attributes()
-        np.random.seed(random_seed)
+        # FTRL state - sparse representation for efficiency
+        self.z = defaultdict(float)  # Coefficients
+        self.n = defaultdict(float)  # Sum of squared gradients
+        self.w = {}  # Weights (only non-zero stored)
         
-        self.z = np.zeros(n_features)
-        self.n = np.zeros(n_features)  # Sum of squared gradients
-        self.w = np.zeros(n_features)
+        self.t = 0  # Timestep counter
+        self._is_sparse = None  # Auto-detect input type
 
     def __str__(self):
-        return f"FTRLClassifier(alpha={self.alpha}, beta={self.beta}, l1={self.l1}, l2={self.l2})"
+        return (f"FTRLClassifier(alpha={self.alpha}, beta={self.beta}, "
+                f"l1={self.l1}, l2={self.l2})")
+
+    def _parse_features(self, instance: Instance) -> Union[Dict[int, float], Dict[str, float]]:
+        """Parse features from instance - supports both sparse dict and dense array."""
+        
+        # ✅ 优先检查自定义的稀疏特征属性
+        if hasattr(instance, '_sparse_x'):
+            self._is_sparse = True
+            return instance._sparse_x
+        
+        # 原有的逻辑（处理标准numpy数组）
+        if isinstance(instance.x, dict):
+            self._is_sparse = True
+            return instance.x
+        else:
+            x = np.array(instance.x)
+            if self._is_sparse is None:
+                sparsity = 1.0 - (np.count_nonzero(x) / len(x))
+                self._is_sparse = sparsity > 0.5
+            
+            if self._is_sparse:
+                sparse = {}
+                for i, val in enumerate(x):
+                    if val != 0.0:
+                        sparse[i] = float(val)
+                return sparse
+            else:
+                return x
+
+    def _get_weight(self, feature_id: int) -> float:
+        """Get weight for feature, computing on-the-fly if sparse."""
+        if feature_id not in self.w:
+            self._compute_weight(feature_id)
+        return self.w.get(feature_id, 0.0)
+
+    def _compute_weight(self, feature_id: int):
+        """Compute weight using FTRL-Proximal formula.
+        
+        w[i] = 0 if |z[i]| <= l1
+        w[i] = -(z[i] - sign(z[i])*l1) / ((beta + sqrt(n[i]))/alpha + l2) otherwise
+        """
+        z_val = self.z[feature_id]
+        n_val = self.n[feature_id]
+        
+        if np.abs(z_val) <= self.l1:
+            # Soft-thresholding
+            if feature_id in self.w:
+                del self.w[feature_id]
+        else:
+            # Compute weight
+            numerator = -(z_val - np.sign(z_val) * self.l1)
+            denominator = (self.beta + np.sqrt(n_val)) / self.alpha + self.l2
+            self.w[feature_id] = numerator / denominator
 
     def train(self, instance: Instance):
-        """Train using FTRL-Proximal update."""
-        x = np.array(instance.x)
+        """FTRL-Proximal update step.
+        
+        Process:
+        1. Parse features (sparse or dense)
+        2. Compute prediction
+        3. Calculate gradient
+        4. Update z, n, w for each feature
+        """
+        features = self._parse_features(instance)
         y = float(instance.y_index)
+        self.t += 1
         
-        # Update weights
-        self._update_weights()
-        
-        # Compute prediction and gradient
-        y_hat = self._sigmoid(np.dot(self.w, x))
-        gradient = (y_hat - y) * x
+        # Prediction
+        y_hat = self._predict_proba(features)
         
         # FTRL update
-        for i in range(len(self.w)):
-            sigma = (np.sqrt(self.n[i] + gradient[i]**2) - np.sqrt(self.n[i])) / self.alpha
-            self.z[i] += gradient[i] - sigma * self.w[i]
-            self.n[i] += gradient[i]**2
+        if isinstance(features, dict):
+            # Sparse update - O(k) where k is number of non-zero features
+            for feature_id, x_val in features.items():
+                self._ftrl_update_feature(feature_id, x_val, y_hat, y)
+        else:
+            # Dense update - O(n)
+            for i, x_val in enumerate(features):
+                if x_val != 0.0:  # Skip zero contributions
+                    self._ftrl_update_feature(i, float(x_val), y_hat, y)
 
-    def _update_weights(self):
-        """Update weights using FTRL formula."""
-        for i in range(len(self.w)):
-            if np.abs(self.z[i]) <= self.l1:
-                self.w[i] = 0.0
-            else:
-                numerator = -(self.z[i] - np.sign(self.z[i]) * self.l1)
-                denominator = (self.beta + np.sqrt(self.n[i])) / self.alpha + self.l2
-                self.w[i] = numerator / denominator
+    def _ftrl_update_feature(self, feature_id: int, x_val: float, y_hat: float, y: float):
+        """Update FTRL state for a single feature."""
+        gradient = (y_hat - y) * x_val
+        old_n = self.n[feature_id]
+        new_n = old_n + gradient ** 2
+        
+        # Adaptive learning rate
+        sigma = (np.sqrt(new_n) - np.sqrt(old_n)) / self.alpha
+        
+        # Update z
+        old_weight = self._get_weight(feature_id)
+        self.z[feature_id] = self.z[feature_id] + gradient - sigma * old_weight
+        self.n[feature_id] = new_n
+        
+        # Recompute weight
+        self._compute_weight(feature_id)
 
     def predict(self, instance: Instance) -> int:
-        """Predict class label."""
-        self._update_weights()
-        x = np.array(instance.x)
-        prob = self._sigmoid(np.dot(self.w, x))
+        """Predict class label (0 or 1)."""
+        prob = self._predict_proba(self._parse_features(instance))
         return 1 if prob > 0.5 else 0
 
     def predict_proba(self, instance: Instance) -> np.ndarray:
         """Predict class probabilities."""
-        self._update_weights()
-        x = np.array(instance.x)
-        prob_class1 = self._sigmoid(np.dot(self.w, x))
+        prob_class1 = self._predict_proba(self._parse_features(instance))
         return np.array([1 - prob_class1, prob_class1])
+
+    def _predict_proba(self, features: Union[Dict[int, float], np.ndarray]) -> float:
+        """Compute prediction probability using logistic function."""
+        logit = 0.0
+        
+        if isinstance(features, dict):
+            # Sparse prediction - O(k)
+            for feature_id, x_val in features.items():
+                w_val = self._get_weight(feature_id)
+                logit += w_val * x_val
+        else:
+            # Dense prediction - O(n)
+            for i, x_val in enumerate(features):
+                if x_val != 0.0:
+                    w_val = self._get_weight(i)
+                    logit += w_val * x_val
+        
+        return self._sigmoid(logit)
 
     @staticmethod
     def _sigmoid(z: float) -> float:
@@ -107,12 +200,62 @@ class FTRLClassifier(Classifier):
         z = np.clip(z, -500, 500)
         return 1.0 / (1.0 + np.exp(-z))
 
-    def get_sparsity(self) -> float:
-        """Get proportion of zero weights."""
-        self._update_weights()
-        return np.sum(np.abs(self.w) < 1e-8) / len(self.w)
+    # ============ Analysis methods ============
 
-    def get_weights(self) -> np.ndarray:
-        """Get current weights."""
-        self._update_weights()
-        return self.w.copy()
+    def get_sparsity(self) -> float:
+        """Get proportion of zero weights among all encountered features.
+        
+        For sparse models, we calculate sparsity based on all features
+        that have been encountered during training (stored in self.z).
+        """
+        if not hasattr(self, 'z') or not self.z:
+            return 1.0
+        
+        # Total features = all features encountered (stored in z)
+        total_features = len(self.z)
+        
+        # Non-zero weights = features in self.w with non-zero values
+        # Note: zero weights are removed from self.w by _compute_weight
+        num_nonzero = len(self.w)
+        
+        # Zero weights = total - non-zero
+        num_zero = total_features - num_nonzero
+        
+        return num_zero / total_features if total_features > 0 else 1.0
+
+    def get_density(self) -> float:
+        """Get proportion of non-zero weights."""
+        return 1.0 - self.get_sparsity()
+
+    def get_num_active_features(self) -> int:
+        """Get number of non-zero weights."""
+        return len(self.w)
+
+    def get_num_zero_weights(self) -> int:
+        """Get number of zero weights."""
+        if not hasattr(self, 'z'):
+            return 0
+        return len(self.z) - len(self.w)
+
+    def get_num_total_features(self) -> int:
+        """Get total number of features encountered."""
+        return len(self.z) if hasattr(self, 'z') else 0
+
+    def get_num_active_features(self) -> int:
+        """Get number of non-zero weights."""
+        return len([v for v in self.w.values() if np.abs(v) > 1e-8])
+
+    def get_weights_sparse(self) -> Dict[int, float]:
+        """Get weights as sparse dictionary (memory efficient)."""
+        return dict(self.w)
+
+    def get_top_weights(self, k: int = 10) -> list:
+        """Get top-k features by absolute weight value."""
+        if not self.w:
+            return []
+        sorted_weights = sorted(self.w.items(), key=lambda x: abs(x[1]), reverse=True)
+        return sorted_weights[:k]
+
+    def get_weight(self, feature_id: int) -> float:
+        """Get weight for specific feature."""
+        return self._get_weight(feature_id)

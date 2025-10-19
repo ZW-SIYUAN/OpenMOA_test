@@ -7,6 +7,8 @@ from ._stream import (
     NumpyStream,
     MOAStream,
     ConcatStream,
+    LibsvmStream,
+    BagOfWordsStream,
 )
 from .torch import TorchClassifyStream
 from .evolving import EvolvingFeatureStream
@@ -29,4 +31,6 @@ __all__ = [
     "ConcatStream",
     "CapriciousStream",
     "TrapezoidalStream",
+    "LibsvmStream",
+    "BagOfWordsStream",
 ]

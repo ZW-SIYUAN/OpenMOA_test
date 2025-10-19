@@ -1,0 +1,62 @@
+================================================================================
+FTRL-Proximal Experimental Results (AUC)
+McMahan et al. (2011) Replication
+================================================================================
+
+Implementation:
+  - Sparse FTRL with lazy weight computation
+  - BagOfWordsStream with unit-length normalization
+  - λ = 0.05 (direct value)
+  - 5 random shuffles averaged
+  - Metric: AUC (Area Under ROC Curve)
+
+Parameters:
+  λ (L1):      0.05
+  β (beta):    1.0
+  L2:          1.0
+  Shuffles:    5
+  Instances:   2000 per dataset
+
+================================================================================
+RESULTS (Paper Table 2 Format - AUC)
+================================================================================
+
+Dataset         Your Result (AUC)         Paper Result              Diff
+--------------------------------------------------------------------------------
+books           80.6 (0.040)              87.4 (0.081)              -6.8%
+dvd             82.0 (0.031)              88.4 (0.078)              -6.4%
+electronics     86.7 (0.117)              91.6 (0.114)              -4.9%
+kitchen         88.3 (0.100)              93.1 (0.129)              -4.8%
+
+================================================================================
+DETAILED STATISTICS
+================================================================================
+
+Dataset         AUC ± Std            Accuracy ± Std       Sparsity ± Std       Best α
+------------------------------------------------------------------------------------------
+books           80.642 ± 0.521  72.540 ± 0.423  0.040 ± 0.003  1.9
+dvd             82.041 ± 0.385  74.220 ± 0.395  0.031 ± 0.005  1.9
+electronics     86.703 ± 0.280  77.970 ± 0.331  0.117 ± 0.005  1.9
+kitchen         88.251 ± 0.409  79.900 ± 0.576  0.100 ± 0.013  1.9
+
+================================================================================
+ANALYSIS
+================================================================================
+
+Observations:
+  1. Sparsity: Your results show 4-6% (96% weights = 0)
+  2. Paper results show 8-13% sparsity (87-92% weights = 0)
+  3. Your model is LESS sparse than paper
+  4. AUC is 5-7% lower than paper
+
+Possible reasons:
+  - Different vocabulary size (yours: 195k, paper: ~7k)
+  - Different preprocessing (tokenization, stopwords)
+  - Dataset version differences
+  - Need larger λ to match paper's sparsity
+
+Key findings:
+  - FTRL-Proximal achieves good sparsity (96% zero weights)
+  - L1 regularization (λ=0.05) effectively prunes features
+  - Results are consistent across 5 shuffles (low std)
+  - AUC is the correct metric for comparison with paper

@@ -29,6 +29,7 @@ from ._fobos_classifier import FOBOSClassifier
 from ._ftrl_classifier import FTRLClassifier
 from ._ovfm_classifier import OVFMClassifier
 from ._oslmf_classifier import OSLMFClassifier
+from ._old3s_classifier import OLD3SClassifier
 
 __all__ = [
     "AdaptiveRandomForestClassifier",
@@ -62,4 +63,5 @@ __all__ = [
     "FTRLClassifier",
     "OVFMClassifier",
     "OSLMFClassifier",
+    "OLD3SClassifier",
 ]
