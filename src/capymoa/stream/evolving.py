@@ -267,29 +267,26 @@ class EvolvingFeatureStream(Stream):
     def __len__(self) -> int:
         """返回流的长度"""
         return min(self.total_instances, len(self.base_stream))
+
 class TrapezoidalStream(Stream):
-    """专为 OVFM 设计的梯形数据流（TDS）
+    """OVFM 专用梯形流（支持顺序/随机模式）
     
     特点：
-    - 特征维度单调递增（从 d_min 到 d_max）
-    - 特征按前缀顺序出现（0, 1, 2, ...）
-    - 返回固定维度实例，缺失特征用 NaN 填充
-    - 保证与 OVFM 的 TrapezoidalExpectationMaximization2 兼容
+    - 返回固定维度实例，未出生特征用 NaN 填充
+    - 支持前缀顺序或随机顺序出生
     
     Example:
-        >>> from capymoa.datasets import Electricity
-        >>> from capymoa.stream import OVFMTrapezoidalStream
-        >>> 
-        >>> stream = OVFMTrapezoidalStream(
+        >>> stream = TrapezoidalStream(
         ...     base_stream=Electricity(),
-        ...     d_min=2,
-        ...     d_max=8,
-        ...     total_instances=3000
+        ...     d_min=1, d_max=6,
+        ...     feature_order="sequential"
         ... )
         >>> 
-        >>> # 第一个实例只有前 2 个特征
-        >>> inst1 = stream.next_instance()
-        >>> print(len(inst1.x))  # 8 (但只有前2个有值，其余是NaN)
+        >>> stream = TrapezoidalStream(
+        ...     base_stream=Electricity(),
+        ...     d_min=1, d_max=6,
+        ...     feature_order="random"
+        ... )
     """
     
     def __init__(
@@ -299,6 +296,7 @@ class TrapezoidalStream(Stream):
         d_max: Optional[int] = None,
         total_instances: int = 10000,
         num_phases: int = 10,
+        feature_order: Literal["sequential", "random"] = "sequential",
         random_seed: int = 42
     ):
         """初始化 OVFM 梯形流
@@ -308,6 +306,9 @@ class TrapezoidalStream(Stream):
         :param d_max: 最终特征数（None 则使用全部）
         :param total_instances: 总样本数
         :param num_phases: 特征出现的阶段数（默认10，即每10%实例新增一批特征）
+        :param feature_order: 特征出现顺序
+            - "sequential": 按索引顺序（0,1,2...）
+            - "random": 随机打乱顺序
         :param random_seed: 随机种子
         """
         self.base_stream = base_stream
@@ -323,31 +324,45 @@ class TrapezoidalStream(Stream):
         
         self.total_instances = total_instances
         self.num_phases = num_phases
+        self.feature_order = feature_order
         self.random_seed = random_seed
         
         self._current_t = 0
         self._schema = base_stream.get_schema()
         
-        # 预计算每个特征的出生时间（前缀顺序）
+        # 初始化随机数生成器
+        self._rng = np.random.RandomState(random_seed)
+        
+        # 预计算每个特征的出生时间
         self._feature_birth_times = self._compute_birth_times()
     
     def _compute_birth_times(self) -> np.ndarray:
-        """计算每个特征的出生时间（前缀顺序）"""
+        """计算每个特征的出生时间"""
         birth_times = np.zeros(self.d_max, dtype=int)
         
-        # 特征按索引顺序出生
-        for i in range(self.d_max):
-            # 计算该特征属于第几个阶段
-            phase = int((i * self.num_phases) / self.d_max)
-            # 该阶段的起始时间
-            birth_times[i] = phase * (self.total_instances // self.num_phases)
+        if self.feature_order == "sequential":
+            # 顺序模式：特征按索引顺序出生
+            for i in range(self.d_max):
+                phase = int((i * self.num_phases) / self.d_max)
+                birth_times[i] = phase * (self.total_instances // self.num_phases)
+        
+        elif self.feature_order == "random":
+            # 随机模式：特征随机打乱后分配出生时间
+            indices = self._rng.permutation(self.d_max)  # 随机排列
+            
+            for i in range(self.d_max):
+                feature_idx = indices[i]
+                phase = int((i * self.num_phases) / self.d_max)
+                birth_times[feature_idx] = phase * (self.total_instances // self.num_phases)
+        
+        else:
+            raise ValueError(f"Unknown feature_order: {self.feature_order}")
         
         return birth_times
     
-    def _get_active_features(self, t: int) -> int:
-        """获取时刻 t 的活跃特征数（前 k 个特征）"""
-        # 返回已经"出生"的特征数量
-        return np.sum(self._feature_birth_times <= t)
+    def _get_active_features_mask(self, t: int) -> np.ndarray:
+        """获取时刻 t 的活跃特征掩码（True=已出生，False=未出生）"""
+        return self._feature_birth_times <= t
     
     def next_instance(self):
         """获取下一个实例（固定维度，缺失用 NaN）"""
@@ -358,16 +373,25 @@ class TrapezoidalStream(Stream):
         if base_instance is None:
             return None
         
-        # 获取当前活跃的特征数
-        num_active = self._get_active_features(self._current_t)
-        num_active = max(self.d_min, num_active)  # 至少 d_min 个特征
+        # 获取当前已出生的特征掩码
+        active_mask = self._get_active_features_mask(self._current_t)
+        num_active = np.sum(active_mask)
+        
+        # 确保至少有 d_min 个特征（如果不够，随机激活）
+        if num_active < self.d_min:
+            inactive_indices = np.where(~active_mask)[0]
+            if len(inactive_indices) > 0:
+                # 随机选择一些未出生的特征提前激活
+                num_needed = min(self.d_min - num_active, len(inactive_indices))
+                early_birth = self._rng.choice(inactive_indices, num_needed, replace=False)
+                active_mask[early_birth] = True
         
         # 创建固定维度的特征向量（全部用 NaN 初始化）
         x_full = np.full(self.d_max, np.nan)
         
-        # 只填充活跃的特征
+        # 填充已出生的特征
         x_base = np.array(base_instance.x)
-        x_full[:num_active] = x_base[:num_active]
+        x_full[active_mask] = x_base[active_mask]
         
         # 创建新实例（固定维度）
         if self._schema.is_classification():

@@ -39,7 +39,7 @@ results = prequential_evaluation(
     window_size=100
 )
 
-# 打印所有指标（移除括号）
+
 print("\n" + "=" * 60)
 print("RESULTS")
 print("=" * 60)
