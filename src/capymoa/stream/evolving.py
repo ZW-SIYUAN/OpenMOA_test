@@ -15,31 +15,6 @@ class EvolvingFeatureStream(Stream):
     - decremental: 特征数单调减少
     - tds: 梯形数据流，特征有"出生时间"（ORF3V 论文）
     - vfs: 完全随机缺失（ORF3V 论文）
-    
-    Example:
-    >>> from capymoa.datasets import Electricity
-    >>> from capymoa.stream import EvolvingFeatureStream
-    >>> 
-    >>> # Pyramid 模式（OASF）
-    >>> stream = EvolvingFeatureStream(
-    ...     base_stream=Electricity(),
-    ...     evolution_pattern="pyramid",
-    ...     d_min=2, d_max=6
-    ... )
-    >>> 
-    >>> # VFS 模式（ORF3V）
-    >>> stream = EvolvingFeatureStream(
-    ...     base_stream=Electricity(),
-    ...     evolution_pattern="vfs",
-    ...     missing_ratio=0.75
-    ... )
-    >>> 
-    >>> # TDS 模式（ORF3V）
-    >>> stream = EvolvingFeatureStream(
-    ...     base_stream=Electricity(),
-    ...     evolution_pattern="tds",
-    ...     d_min=1, d_max=6
-    ... )
     """
 
     def __init__(
@@ -482,7 +457,6 @@ class CapriciousStream(Stream):
         self._rng = np.random.RandomState(random_seed)
     
     def _get_feature_mask(self, t: int) -> np.ndarray:
-        """获取时刻 t 的特征掩码（True=保留，False=缺失）"""
         # 使用时间步作为种子，保证可重复性
         rng_t = np.random.RandomState(self.random_seed + t)
         
@@ -503,7 +477,6 @@ class CapriciousStream(Stream):
         return mask
     
     def next_instance(self):
-        """获取下一个实例（固定维度，缺失用 NaN）"""
         if not self.has_more_instances():
             return None
         
@@ -562,4 +535,256 @@ class CapriciousStream(Stream):
         return 1.0 - np.sum(mask) / len(mask)
     
     def __len__(self) -> int:
+        return min(self.total_instances, len(self.base_stream))
+    
+
+class EvolvableStream(Stream):
+    """Evolvable Stream: 模拟特征空间从 S1 → 全部特征 → S2 的三阶段演化。
+    
+    三阶段结构：
+    - Phase 1: 只有前 d1 个特征（prefix）
+    - Phase 2 (Overlap): 全部 d_max 个特征
+    - Phase 3: 只有后 d2 个特征（suffix）
+    
+    这种模式常用于模拟特征空间切换场景（如 FESL、OLD³S 论文），
+    其中有一个重叠期用于学习特征空间之间的映射关系。
+    
+    Example:
+        >>> from capymoa.datasets import Electricity
+        >>> from capymoa.stream import EvolvableStream
+        >>> 
+        >>> # 配置三阶段演化
+        >>> stream = EvolvableStream(
+        ...     base_stream=Electricity(),
+        ...     d1=4,                    # Phase 1: 前 4 个特征
+        ...     d2=4,                    # Phase 3: 后 4 个特征
+        ...     phase1_ratio=0.4,        # Phase 1 占 40% 实例
+        ...     overlap_ratio=0.2,       # Overlap 占 20% 实例
+        ...     phase3_ratio=0.4,        # Phase 3 占 40% 实例
+        ...     total_instances=10000
+        ... )
+        >>> 
+        >>> # Phase 1 (t=0-3999):   x = [f0, f1, f2, f3]
+        >>> # Overlap (t=4000-5999): x = [f0, f1, ..., f7]
+        >>> # Phase 3 (t=6000-9999): x = [f4, f5, f6, f7]
+        >>> 
+        >>> # 配合 FESL 算法使用
+        >>> learner = FESLClassifier(
+        ...     schema=stream.get_schema(),
+        ...     s1_feature_indices=[0, 1, 2, 3],
+        ...     s2_feature_indices=[4, 5, 6, 7],
+        ...     overlap_size=2000,
+        ...     switch_point=6000
+        ... )
+    """
+
+    def __init__(
+        self,
+        base_stream: Stream,
+        d1: int,
+        d2: int,
+        d_max: Optional[int] = None,
+        phase1_ratio: float = 0.4,
+        overlap_ratio: float = 0.2,
+        phase3_ratio: float = 0.4,
+        total_instances: int = 10000,
+        random_seed: int = 42
+    ):
+        """初始化 Evolvable Stream
+        
+        :param base_stream: 原始数据流
+        :param d1: Phase 1 的特征数量（前缀特征）
+        :param d2: Phase 3 的特征数量（后缀特征）
+        :param d_max: 总特征数（None 则使用原始特征数）
+        :param phase1_ratio: Phase 1 占总实例数的比例
+        :param overlap_ratio: Overlap 占总实例数的比例
+        :param phase3_ratio: Phase 3 占总实例数的比例
+        :param total_instances: 总样本数
+        :param random_seed: 随机种子
+        
+        注意：
+        - phase1_ratio + overlap_ratio + phase3_ratio 必须等于 1.0
+        - d1 和 d2 不应该重叠（d1 + d2 <= d_max）
+        """
+        # 验证比例参数
+        ratio_sum = phase1_ratio + overlap_ratio + phase3_ratio
+        if not np.isclose(ratio_sum, 1.0):
+            raise ValueError(
+                f"Phase ratios must sum to 1.0, got {ratio_sum:.3f} "
+                f"(phase1={phase1_ratio}, overlap={overlap_ratio}, phase3={phase3_ratio})"
+            )
+        
+        self.base_stream = base_stream
+        self.d1 = d1
+        self.d2 = d2
+        
+        # 获取原始特征数
+        original_d = base_stream.get_schema().get_num_attributes()
+        self.d_max = d_max if d_max is not None else original_d
+        
+        if self.d_max > original_d:
+            raise ValueError(
+                f"d_max ({self.d_max}) cannot exceed original feature count ({original_d})"
+            )
+        
+        if d1 > self.d_max or d2 > self.d_max:
+            raise ValueError(
+                f"d1 ({d1}) and d2 ({d2}) must not exceed d_max ({self.d_max})"
+            )
+        
+        if d1 + d2 > self.d_max:
+            raise ValueError(
+                f"d1 ({d1}) + d2 ({d2}) = {d1 + d2} exceeds d_max ({self.d_max}). "
+                "Phase 1 and Phase 3 features should not overlap to ensure distinct feature spaces."
+            )
+        
+        self.phase1_ratio = phase1_ratio
+        self.overlap_ratio = overlap_ratio
+        self.phase3_ratio = phase3_ratio
+        self.total_instances = total_instances
+        self.random_seed = random_seed
+        
+        # 设置随机种子
+        self._rng = np.random.RandomState(random_seed)
+        
+        # 计算三个阶段的时间边界
+        self.phase1_end = int(total_instances * phase1_ratio)
+        self.overlap_end = self.phase1_end + int(total_instances * overlap_ratio)
+        
+        # 预计算特征索引
+        self._s1_indices = np.arange(d1)  # Phase 1: [0, 1, ..., d1-1]
+        self._s2_indices = np.arange(self.d_max - d2, self.d_max)  # Phase 3: 后 d2 个
+        self._full_indices = np.arange(self.d_max)  # Overlap: 全部特征
+        
+        # 当前时间步
+        self._current_t = 0
+        
+        # Schema
+        self._schema = base_stream.get_schema()
+
+    def __str__(self):
+        return (
+            f"EvolvableStream(d1={self.d1}, d2={self.d2}, d_max={self.d_max}, "
+            f"phases=[{self.phase1_ratio:.1%}, {self.overlap_ratio:.1%}, {self.phase3_ratio:.1%}])"
+        )
+
+    def _get_active_indices(self, t: int) -> np.ndarray:
+        """根据时间步获取活跃特征索引
+        
+        :param t: 当前时间步
+        :return: 活跃特征的索引数组
+        """
+        if t < self.phase1_end:
+            # Phase 1: 前 d1 个特征
+            return self._s1_indices
+        elif t < self.overlap_end:
+            # Overlap: 全部特征
+            return self._full_indices
+        else:
+            # Phase 3: 后 d2 个特征
+            return self._s2_indices
+
+    def next_instance(self):
+        """获取下一个实例（特征已演化）
+        
+        根据当前时间步，返回相应阶段的特征子集。
+        
+        :return: 演化后的 Instance 对象，或 None（流结束时）
+        """
+        if not self.has_more_instances():
+            return None
+        
+        # 从基础流获取原始实例
+        base_instance = self.base_stream.next_instance()
+        if base_instance is None:
+            return None
+        
+        # 根据当前时间步获取活跃特征
+        active_indices = self._get_active_indices(self._current_t)
+        
+        # 提取子集特征
+        x_full = np.array(base_instance.x)
+        x_subset = x_full[active_indices]
+        
+        # 创建新实例
+        if self._schema.is_classification():
+            modified_instance = LabeledInstance.from_array(
+                self._schema,
+                x_subset,
+                base_instance.y_index
+            )
+        else:
+            modified_instance = RegressionInstance.from_array(
+                self._schema,
+                x_subset,
+                base_instance.y_value
+            )
+        
+        self._current_t += 1
+        return modified_instance
+
+    def has_more_instances(self) -> bool:
+        """检查是否还有更多实例"""
+        return (
+            self._current_t < self.total_instances 
+            and self.base_stream.has_more_instances()
+        )
+
+    def restart(self):
+        """重启流"""
+        self.base_stream.restart()
+        self._current_t = 0
+
+    def get_schema(self) -> Schema:
+        """返回 schema"""
+        return self._schema
+
+    def get_moa_stream(self):
+        """自定义流不支持 MOA 加速"""
+        return None
+    
+    def get_current_phase(self) -> str:
+        """获取当前所处阶段（用于调试和监控）
+        
+        :return: 'phase1', 'overlap', 或 'phase3'
+        """
+        t = self._current_t
+        if t < self.phase1_end:
+            return "phase1"
+        elif t < self.overlap_end:
+            return "overlap"
+        else:
+            return "phase3"
+    
+    def get_current_dimension(self) -> int:
+        """获取当前特征维度（用于调试）
+        
+        :return: 当前时刻的特征数量
+        """
+        return len(self._get_active_indices(self._current_t))
+    
+    def get_phase_boundaries(self) -> dict:
+        """获取三个阶段的时间边界（用于可视化和分析）
+        
+        :return: 字典，包含每个阶段的 (start, end) 时间步
+        """
+        return {
+            "phase1": (0, self.phase1_end),
+            "overlap": (self.phase1_end, self.overlap_end),
+            "phase3": (self.overlap_end, self.total_instances)
+        }
+    
+    def get_feature_spaces(self) -> dict:
+        """获取各阶段的特征索引（用于算法配置）
+        
+        :return: 字典，包含各阶段的特征索引数组
+        """
+        return {
+            "s1_indices": self._s1_indices.copy(),
+            "s2_indices": self._s2_indices.copy(),
+            "full_indices": self._full_indices.copy()
+        }
+    
+    def __len__(self) -> int:
+        """返回流的长度"""
         return min(self.total_instances, len(self.base_stream))
