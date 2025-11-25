@@ -11,8 +11,8 @@ from ._stream import (
     BagOfWordsStream,
 )
 from .torch import TorchClassifyStream
-from .evolving import EvolvingFeatureStream
-from .evolving import CapriciousStream, TrapezoidalStream
+from .stream_wrapper import OpenFeatureStream
+from .stream_wrapper import CapriciousStream, TrapezoidalStream, EvolvableStream
 from . import drift, generator, preprocessing
 
 __all__ = [
@@ -22,7 +22,7 @@ __all__ = [
     "ARFFStream",
     "TorchClassifyStream",
     "CSVStream",
-    "EvolvingFeatureStream",    
+    "OpenFeatureStream",    
     "drift",
     "generator",
     "preprocessing",
@@ -31,6 +31,7 @@ __all__ = [
     "ConcatStream",
     "CapriciousStream",
     "TrapezoidalStream",
+    "EvolvableStream",
     "LibsvmStream",
     "BagOfWordsStream",
 ]

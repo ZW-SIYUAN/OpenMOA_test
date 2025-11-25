@@ -120,8 +120,24 @@ class ORF3VClassifier(Classifier):
         x = np.array(instance.x)
         y = instance.y_index
         
-        # Update feature statistics
-        self._update_feature_stats(x, y)
+        # --- [修改开始] ---
+        # 尝试获取 Stream 传递过来的真实特征 ID
+        # 如果没有这个属性 (普通流)，则默认使用 0, 1, 2...
+        indices = getattr(instance, 'feature_indices', range(len(x)))
+        
+        # 使用 zip 同时遍历 (真实ID, 数值)
+        # 原代码: for i, val in enumerate(x):
+        for i, val in zip(indices, x):
+            # 确保 i 是 int 类型 (numpy array 可能是 int64)
+            feature_id = int(i) 
+            
+            # Update feature statistics
+            if feature_id not in self.feature_stats:
+                self.feature_stats[feature_id] = FeatureStats(self.n_classes, self.window_size)
+                self.first_occurrence[feature_id] = self.t
+                self.weights[feature_id] = 1.0
+            
+            self.feature_stats[feature_id].update(val, y)
         
         # Pruning check
         if self.enable_pruning and self.t > self.window_size:
@@ -141,47 +157,63 @@ class ORF3VClassifier(Classifier):
         self._update_weights(instance)
 
     def predict(self, instance: Instance) -> int:
-        """Predict class label."""
-        x = np.array(instance.x)
-        
-        if len(self.feature_forests) == 0:
-            return 0
-        
-        # Aggregate predictions from all feature forests
-        class_scores = np.zeros(self.n_classes)
-        
-        for i, feature_val in enumerate(x):
-            if i in self.feature_forests and i in self.weights:
-                forest = self.feature_forests[i]
-                probs = forest.predict(feature_val)
+            x = np.array(instance.x)
+            if len(self.feature_forests) == 0:
+                return 0
                 
-                for c in range(self.n_classes):
-                    class_scores[c] += self.weights[i] * probs.get(c, 0)
-        
-        return int(np.argmax(class_scores))
+            class_scores = np.zeros(self.n_classes)
+            
+            # --- [修改开始] ---
+            indices = getattr(instance, 'feature_indices', range(len(x)))
+            
+            for i, feature_val in zip(indices, x):
+                feature_id = int(i)
+                # 只有当这个特征ID有对应的森林时才预测
+                if feature_id in self.feature_forests and feature_id in self.weights:
+                    forest = self.feature_forests[feature_id]
+                    probs = forest.predict(feature_val)
+                    for c in range(self.n_classes):
+                        class_scores[c] += self.weights[feature_id] * probs.get(c, 0)
+            # --- [修改结束] ---
+                        
+            return int(np.argmax(class_scores))
 
     def predict_proba(self, instance: Instance) -> np.ndarray:
-        """Predict class probabilities."""
-        x = np.array(instance.x)
-        
-        if len(self.feature_forests) == 0:
-            return np.ones(self.n_classes) / self.n_classes
-        
-        class_scores = np.zeros(self.n_classes)
-        
-        for i, feature_val in enumerate(x):
-            if i in self.feature_forests and i in self.weights:
-                forest = self.feature_forests[i]
-                probs = forest.predict(feature_val)
+            """Predict class probabilities."""
+            x = np.array(instance.x)
+            
+            # 如果还没建立任何森林，返回均匀分布
+            if len(self.feature_forests) == 0:
+                return np.ones(self.n_classes) / self.n_classes
+            
+            class_scores = np.zeros(self.n_classes)
+            
+            # --- [修改开始] ---
+            # 1. 获取 Instance 携带的真实特征 ID (如果没有则回退到 range)
+            indices = getattr(instance, 'feature_indices', range(len(x)))
+            
+            # 2. 使用 zip 同时遍历 (真实ID, 特征值)
+            # 不要使用 enumerate(x)
+            for i, feature_val in zip(indices, x):
+                feature_id = int(i)
                 
-                for c in range(self.n_classes):
-                    class_scores[c] += self.weights[i] * probs.get(c, 0)
-        
-        # Normalize
-        total = class_scores.sum()
-        if total > 0:
-            return class_scores / total
-        return np.ones(self.n_classes) / self.n_classes
+                # 3. 只有当这个特征 ID 有对应的森林且有权重时才参与投票
+                if feature_id in self.feature_forests and feature_id in self.weights:
+                    forest = self.feature_forests[feature_id]
+                    probs = forest.predict(feature_val)
+                    
+                    # 累加加权概率
+                    for c in range(self.n_classes):
+                        class_scores[c] += self.weights[feature_id] * probs.get(c, 0)
+            # --- [修改结束] ---
+            
+            # 归一化 (Normalize)
+            total = class_scores.sum()
+            if total > 0:
+                return class_scores / total
+                
+            # 如果总分为0 (比如所有特征都缺失或没有匹配的森林)，返回均匀分布
+            return np.ones(self.n_classes) / self.n_classes
 
     def _update_feature_stats(self, x: np.ndarray, y: int):
         """Update feature statistics using simplified t-digest approximation."""
