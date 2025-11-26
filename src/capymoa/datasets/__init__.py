@@ -31,6 +31,26 @@ from ._datasets import (
     RBFm_100k,
     RTG_2abrupt,
     Sensor,
+    
+    # Binary Classification Benchmarks
+    RCV1,
+    W8a,
+    Adult,      # a8a
+    Magic04,
+    Spambase,
+    Musk,
+    SVMGuide3,
+    German,
+    Australian,
+    Ionosphere,
+    
+    # Multi-Class Classification Benchmarks
+    InternetAds,
+    DryBean,
+    Optdigits,
+    Frogs,
+    Wine,
+    Splice,
 )
 from ._utils import get_download_dir
 from . import downloader
@@ -51,4 +71,22 @@ __all__ = [
     "Sensor",
     "downloader",
     "get_download_dir",
+    "RCV1",
+    "W8a",
+    "Adult",
+    "Magic04",
+    "Spambase",
+    "Musk",
+    "SVMGuide3",
+    "German",
+    "Australian",
+    "Ionosphere",
+    "InternetAds",
+    "DryBean",
+    "Optdigits",
+    "Frogs",
+    "Wine",
+    "downloader",
+    "get_download_dir",
+    "Splice",
 ]

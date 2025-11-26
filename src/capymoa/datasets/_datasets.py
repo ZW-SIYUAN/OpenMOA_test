@@ -46,8 +46,6 @@ class Hyper100k(DownloadARFFGzip):
         son Knowledge discovery and data mining. 2001.
     """
 
-    # TODO: Add docstring describing the dataset and link to the original source
-
     _filename = _get_filename("Hyper100k")
     _remote_url = _get_remote_url("Hyper100k")
     _length = 100_000
@@ -337,3 +335,310 @@ class Bike(DownloadARFFGzip):
     _filename = _get_filename("Bike")
     _remote_url = _get_remote_url("Bike")
     _length = 17_379
+
+
+# ==========================================
+# New Benchmark Datasets (Binary & Multi-Class)
+# ==========================================
+
+class RCV1(DownloadARFFGzip):
+    """RCV1 (Reuters Corpus Volume I) is a text classification dataset.
+    The binary version typically used in benchmarks distinguishes between
+    CCAT (Corporate/Industrial) and ECAT (Economics) categories.
+
+    * Number of instances: 20,242 (standard binary version)
+    * Number of attributes: ~47,236 (sparse)
+    * Number of classes: 2
+
+    **References:**
+
+    #.  Lewis, David D., et al. "RCV1: A new benchmark collection for text
+        categorization research." Journal of machine learning research 5.Apr (2004): 361-397.
+    """
+
+    _filename = _get_filename("RCV1")
+    _remote_url = _get_remote_url("RCV1")
+    _length = 20_242
+
+
+class W8a(DownloadARFFGzip):
+    """w8a is a sparse binary classification dataset derived from web data.
+    It is a larger version of the w1a-w7a series.
+
+    * Number of instances: ~49,749
+    * Number of attributes: 300
+    * Number of classes: 2
+
+    **References:**
+
+    #.  Platt, John C. "Fast training of support vector machines using sequential minimal optimization."
+        Advances in kernel methods. MIT press, 1999.
+    """
+
+    _filename = _get_filename("W8a")
+    _remote_url = _get_remote_url("W8a")
+    _length = 49_749
+
+
+class Adult(DownloadARFFGzip):
+    """Adult (also known as a8a in LIBSVM) is a classification dataset to predict
+    whether income exceeds $50K/yr based on census data.
+
+    * Number of instances: 32,561
+    * Number of attributes: 123 (one-hot encoded) / 14 (original)
+    * Number of classes: 2
+
+    **References:**
+
+    #.  Kohavi, Ron. "Scaling up the accuracy of naive-bayes classifiers: A
+        decision-tree hybrid." KDD. Vol. 96. 1996.
+    #.  https://archive.ics.uci.edu/ml/datasets/Adult
+    """
+
+    _filename = _get_filename("Adult")
+    _remote_url = _get_remote_url("Adult")
+    _length = 32_561
+
+
+class Magic04(DownloadARFFGzip):
+    """MAGIC Gamma Telescope dataset. The task is to classify images into
+    high energy gamma particles (g) or background hadron (h).
+
+    * Number of instances: 19,020
+    * Number of attributes: 10 (real)
+    * Number of classes: 2
+
+    **References:**
+
+    #.  Bock, R. K., et al. "Methods for multidimensional event classification:
+        a case study using images from a Cherenkov gamma-ray telescope."
+        Nuclear Instruments and Methods in Physics Research Section A. 2004.
+    """
+
+    _filename = _get_filename("Magic04")
+    _remote_url = _get_remote_url("Magic04")
+    _length = 19_020
+
+
+class Spambase(DownloadARFFGzip):
+    """Spambase is a classic email spam classification dataset.
+
+    * Number of instances: 4,601
+    * Number of attributes: 57 (continuous)
+    * Number of classes: 2 (spam vs non-spam)
+
+    The attributes measure the frequency of certain words and characters in emails.
+
+    **References:**
+
+    #.  https://archive.ics.uci.edu/ml/datasets/Spambase
+    """
+
+    _filename = _get_filename("Spambase")
+    _remote_url = _get_remote_url("Spambase")
+    _length = 4_601
+
+
+class Musk(DownloadARFFGzip):
+    """Musk (Version 2) dataset. The task is to predict whether a new molecule
+    will be a musk or a non-musk.
+
+    * Number of instances: ~6,598 (full) or ~3,062 (standard subset)
+    * Number of attributes: 166
+    * Number of classes: 2
+
+    **References:**
+
+    #.  https://archive.ics.uci.edu/ml/datasets/Musk+(Version+2)
+    """
+
+    _filename = _get_filename("Musk")
+    _remote_url = _get_remote_url("Musk")
+    # Using the standard subset size commonly found in benchmarks
+    _length = 6_598
+
+class SVMGuide3(DownloadARFFGzip):
+    """SVMGuide3 is a dataset from the LIBSVM guide, often used to
+    demonstrate scaling and kernel performance.
+
+    * Number of instances: ~1,243
+    * Number of attributes: 21
+    * Number of classes: 2
+
+    **References:**
+
+    #.  Hsu, Chih-Wei, Chih-Jen Lin, and Bor-Chen Juand. "A practical guide to
+        support vector classification." (2003).
+    """
+
+    _filename = _get_filename("SVMGuide3")
+    _remote_url = _get_remote_url("SVMGuide3")
+    _length = 1_243
+
+
+class German(DownloadARFFGzip):
+    """German Credit Data. Classifies people as good or bad credit risks.
+
+    * Number of instances: 1,000
+    * Number of attributes: 24 (numerical representation)
+    * Number of classes: 2
+
+    **References:**
+
+    #.  https://archive.ics.uci.edu/ml/datasets/Statlog+(German+Credit+Data)
+    """
+
+    _filename = _get_filename("German")
+    _remote_url = _get_remote_url("German")
+    _length = 1_000
+
+
+class Australian(DownloadARFFGzip):
+    """Australian Credit Approval dataset.
+
+    * Number of instances: 690
+    * Number of attributes: 14
+    * Number of classes: 2
+
+    All attribute names and values have been changed to meaningless symbols
+    to protect confidentiality.
+
+    **References:**
+
+    #.  https://archive.ics.uci.edu/ml/datasets/Statlog+(Australian+Credit+Approval)
+    """
+
+    _filename = _get_filename("Australian")
+    _remote_url = _get_remote_url("Australian")
+    _length = 690
+
+
+class Ionosphere(DownloadARFFGzip):
+    """Ionosphere dataset. Classification of radar returns from the ionosphere.
+    Good radar returns are those showing evidence of some type of structure in
+    the ionosphere.
+
+    * Number of instances: 351
+    * Number of attributes: 34
+    * Number of classes: 2 (Good/Bad)
+
+    **References:**
+
+    #.  Sigillito, V. G., et al. "Classification of radar returns from the ionosphere
+        using neural networks." Johns Hopkins APL Technical Digest 10 (1989): 262-266.
+    """
+
+    _filename = _get_filename("Ionosphere")
+    _remote_url = _get_remote_url("Ionosphere")
+    _length = 351
+
+
+class InternetAds(DownloadARFFGzip):
+    """Internet Advertisements dataset. The task is to predict whether an
+    image is an advertisement ("ad") or not ("nonad").
+
+    * Number of instances: 3,279 (before cleaning) / ~1,960 (standard subset)
+    * Number of attributes: 1,558
+    * Number of classes: 2 (or 6 in specific multi-class versions)
+
+    **References:**
+
+    #.  Kushmerick, Nicholas. "Learning to remove internet advertisements."
+        Autonomous Agents and Multi-Agent Systems 2.3 (1999).
+    """
+
+    _filename = _get_filename("InternetAds")
+    _remote_url = _get_remote_url("InternetAds")
+    _length = 1_960
+
+
+class DryBean(DownloadARFFGzip):
+    """Dry Bean Dataset. Images of 13,611 grains of 7 different registered dry
+    beans were taken with a high-resolution camera.
+
+    * Number of instances: 13,611
+    * Number of attributes: 16
+    * Number of classes: 7
+
+    **References:**
+
+    #.  Koklu, Murat, and Ilker Ali Ozkan. "Multiclass classification of dry beans
+        using computer vision and machine learning techniques." Computers and
+        Electronics in Agriculture 174 (2020): 105507.
+    """
+
+    _filename = _get_filename("DryBean")
+    _remote_url = _get_remote_url("DryBean")
+    _length = 13_611
+
+
+class Optdigits(DownloadARFFGzip):
+    """Optical Recognition of Handwritten Digits (Optdigits).
+
+    * Number of instances: 5,620
+    * Number of attributes: 64 (8x8 bitmaps)
+    * Number of classes: 10 (0-9)
+
+    **References:**
+
+    #.  Alpaydin, E., and C. Kaynak. "Cascading classifiers." Kybernetika
+        34.4 (1998): 369-374.
+    """
+
+    _filename = _get_filename("Optdigits")
+    _remote_url = _get_remote_url("Optdigits")
+    _length = 5_620
+
+
+class Frogs(DownloadARFFGzip):
+    """Anuran Calls (MFCCs) Dataset. Acoustic features extracted from syllables
+    of frog calls to identify the family, genus, and species.
+
+    * Number of instances: 7,195
+    * Number of attributes: 22
+    * Number of classes: 4 (Families) / 10 (Species) - Typically 4 in benchmarks.
+
+    **References:**
+
+    #.  Colonna, J. G., et al. "Classification of frog calls using Gaussian mixture
+        models and indices of bioacoustic complexity." (2015).
+    """
+
+    _filename = _get_filename("Frogs")
+    _remote_url = _get_remote_url("Frogs")
+    _length = 7_195
+
+
+class Wine(DownloadARFFGzip):
+    """Wine recognition dataset. Results of a chemical analysis of wines grown
+    in the same region in Italy but derived from three different cultivars.
+
+    * Number of instances: 178
+    * Number of attributes: 13
+    * Number of classes: 3
+
+    **References:**
+
+    #.  https://archive.ics.uci.edu/ml/datasets/Wine
+    """
+
+    _filename = _get_filename("Wine")
+    _remote_url = _get_remote_url("Wine")
+    _length = 178
+
+class Splice(DownloadARFFGzip):
+    """Primate Splice-junction Gene Sequences. The task is to recognize
+    exon/intron boundaries (splice junctions) in DNA sequences.
+
+    * Number of instances: 3,175 (full) or 1,000 (standard train subset)
+    * Number of attributes: 60
+    * Number of classes: 3 (reduced to 2 in many benchmarks)
+
+    **References:**
+
+    #.  https://archive.ics.uci.edu/ml/datasets/Molecular+Biology+(Splice-junction+Gene+Sequences)
+    """
+
+    _filename = _get_filename("Splice")
+    _remote_url = _get_remote_url("Splice")
+    _length = 3_190

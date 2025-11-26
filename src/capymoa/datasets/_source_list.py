@@ -15,6 +15,9 @@ class _Source:
 # DROPBOX: When downloading from Dropbox, the URL parameter `dl=1` must be set
 # to force the download.
 SOURCE_LIST: Dict[str, _Source] = {
+    # ==========================================
+    # Original CapyMOA Datasets
+    # ==========================================
     "Sensor": _Source(
         "https://www.dropbox.com/scl/fi/tyvtg4g9nop80gc2zuhog/sensor.arff.gz?rlkey=dfocd19pu67lvp4zj2tcaajoq&st=ajjxsxg3&dl=1",
         "https://www.dropbox.com/scl/fi/aloisxhd7p50f669b9rxe/sensor.csv.gz?rlkey=ndiscm2qv4cvgnf5r0ly8ikjg&st=mp2gok4c&dl=1",
@@ -66,5 +69,81 @@ SOURCE_LIST: Dict[str, _Source] = {
     "Bike": _Source(
         "https://www.dropbox.com/scl/fi/r3lmdpzhyzv2h0mdh4802/bike.arff.gz?rlkey=9eq3x5onmgtpmhi1kpjs25u4c&st=ikx0urzf&dl=1",
         "https://www.dropbox.com/scl/fi/srwuiua429eqf4um750z0/bike.csv.gz?rlkey=6e537xxjvs2hcaev73fkpc4yy&st=2gebrfhf&dl=1",
+    ),
+
+    # ==========================================
+    # New OpenMOA Benchmarks (Source URLs)
+    # NOTE: These are public links (OpenML/UCI).
+    # Most are NOT gzipped (.arff instead of .arff.gz).
+    # You may need to download, gzip, and host them,
+    # or ensure your downloader handles uncompressed files.
+    # ==========================================
+
+    # --- Binary Classification ---
+    "RCV1": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/rcv1.arff.gz", 
+        None,
+    ),
+    "W8a": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/w8a.arff.gz",  
+        None,
+    ),
+    "Adult": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/a8a.arff.gz", 
+        None,
+    ),
+    "Magic04": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/magic04.arff.gz", # OpenML ID 1120
+        None,
+    ),
+    "Spambase": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/spambase.arff.gz", # OpenML ID 44
+        None,
+    ),
+    "Musk": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/musk.arff.gz", # OpenML ID 1116 (Musk-2)
+        None,
+    ),
+    "Splice": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/splice.arff.gz", # OpenML ID 46
+        None,
+    ),
+    "SVMGuide3": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/svmguide3.arff.gz", # Note: LIBSVM format!
+        None,
+    ),
+    "German": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/german.arff.gz", # OpenML ID 31 (Credit-g)
+        None,
+    ),
+    "Australian": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/australian.arff.gz", # OpenML ID 40981
+        None,
+    ),
+    "Ionosphere": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/ionosphere.arff.gz", # OpenML ID 59
+        None,
+    ),
+
+    # --- Multi-Class Classification ---
+    "InternetAds": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/Internet-Advertisements.arff.gz", # Estimated OpenML ID
+        None,
+    ),
+    "DryBean": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/Dry_Bean_Dataset.arff.gz", # OpenML ID 43653 or similar
+        None,
+    ),
+    "Optdigits": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/optdigits.arff.gz", # OpenML ID 28
+        None,
+    ),
+    "Frogs": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/Frogs_MFCCs.arff.gz", # OpenML ID 40971
+        None,
+    ),
+    "Wine": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/wine.arff.gz", # OpenML ID 187
+        None,
     ),
 }

@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Literal, Optional
+from typing import Literal, Optional, List
 from capymoa.stream import Stream
 from capymoa.stream._stream import Schema
 from capymoa.instance import LabeledInstance, RegressionInstance
@@ -573,7 +573,7 @@ class CapriciousStream(Stream):
     
 
 
-class EvolvableTrapezoidalStream(Stream):
+class EvolvableStream(Stream):
     """
     Simulates an N-phase Evolvable Data Stream (EDS) using a fixed-dimension 
     representation with NaN for missing values.
