@@ -36,6 +36,7 @@ from ._datasets import (
     RCV1,
     W8a,
     Adult,      # a8a
+    InternetAds,
     Magic04,
     Spambase,
     Musk,
@@ -45,7 +46,6 @@ from ._datasets import (
     Ionosphere,
     
     # Multi-Class Classification Benchmarks
-    InternetAds,
     DryBean,
     Optdigits,
     Frogs,
@@ -74,6 +74,7 @@ __all__ = [
     "RCV1",
     "W8a",
     "Adult",
+    "InternetAds",
     "Magic04",
     "Spambase",
     "Musk",
@@ -81,7 +82,6 @@ __all__ = [
     "German",
     "Australian",
     "Ionosphere",
-    "InternetAds",
     "DryBean",
     "Optdigits",
     "Frogs",

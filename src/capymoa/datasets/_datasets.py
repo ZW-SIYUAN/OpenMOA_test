@@ -549,7 +549,7 @@ class InternetAds(DownloadARFFGzip):
 
     _filename = _get_filename("InternetAds")
     _remote_url = _get_remote_url("InternetAds")
-    _length = 1_960
+    _length = 2_359
 
 
 class DryBean(DownloadARFFGzip):

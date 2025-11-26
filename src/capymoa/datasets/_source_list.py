@@ -92,6 +92,10 @@ SOURCE_LIST: Dict[str, _Source] = {
         "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/a8a.arff.gz", 
         None,
     ),
+    "InternetAds": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/internetads.arff.gz", # Estimated OpenML ID
+        None,
+    ),
     "Magic04": _Source(
         "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/magic04.arff.gz", # OpenML ID 1120
         None,
@@ -102,10 +106,6 @@ SOURCE_LIST: Dict[str, _Source] = {
     ),
     "Musk": _Source(
         "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/musk.arff.gz", # OpenML ID 1116 (Musk-2)
-        None,
-    ),
-    "Splice": _Source(
-        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/splice.arff.gz", # OpenML ID 46
         None,
     ),
     "SVMGuide3": _Source(
@@ -126,12 +126,8 @@ SOURCE_LIST: Dict[str, _Source] = {
     ),
 
     # --- Multi-Class Classification ---
-    "InternetAds": _Source(
-        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/Internet-Advertisements.arff.gz", # Estimated OpenML ID
-        None,
-    ),
     "DryBean": _Source(
-        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/Dry_Bean_Dataset.arff.gz", # OpenML ID 43653 or similar
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/drybean.arff.gz", # OpenML ID 43653 or similar
         None,
     ),
     "Optdigits": _Source(
@@ -139,11 +135,15 @@ SOURCE_LIST: Dict[str, _Source] = {
         None,
     ),
     "Frogs": _Source(
-        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/Frogs_MFCCs.arff.gz", # OpenML ID 40971
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/frogs.arff.gz", # OpenML ID 40971
         None,
     ),
     "Wine": _Source(
         "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/wine.arff.gz", # OpenML ID 187
+        None,
+    ),
+    "Splice": _Source(
+        "https://huggingface.co/datasets/ZhiliWangsiyuan/openmoa-benchmarks/resolve/main/splice.arff.gz", # OpenML ID 46
         None,
     ),
 }
