@@ -1,14 +1,14 @@
 """
-demo_fobos_benchmark_binary.py
-------------------------------
-The ULTIMATE OpenMOA Benchmark Runner (Polished v3.1)
------------------------------------------------------
-Target: Binary Classification (FOBOS)
+demo_fobos_benchmark_multi.py
+---------------------------
+The ULTIMATE OpenMOA Multi-class Benchmark Runner (Polished v3.1)
+-----------------------------------------------------------------
+Target: Multi-class Classification (FOBOS)
 Improvements:
-1. [Auto-Tuning] Adaptive burn-in size (safe for small datasets).
-2. [Shuffling] Correctly shuffles static datasets (Magic04, etc.) to prevent label sorting bias.
-3. [Safety] Fixed 'AttributeError' by using robust stream length detection.
-4. [Output] Generates 33 CSV traces and 33 Plots (Mean ± Std).
+1. [Safety] Adaptive burn-in prevents data exhaustion on small datasets (e.g., Wine).
+2. [Validity] Correctly shuffles static multi-class datasets (DryBean, Optdigits, etc.).
+3. [Preservation] Keeps 'Covertype' ordered (Time-series nature).
+4. [Output] Full Trace CSVs + Plots with Mean ± Std shading.
 """
 
 import sys
@@ -36,33 +36,32 @@ except ImportError as e:
 
 # === Configuration ===
 N_REPEATS = 10           # High reliability setting
-OUTPUT_DIR = "./experiments_fobos_binary"
-BURN_IN_SIZE = 500       # Max samples for hyperparameter tuning
+OUTPUT_DIR = "./experiments_fobos_multiclass"
+BURN_IN_SIZE = 500       # Max samples for tuning (will be adapted for small data)
 
-# Datasets that MUST retain temporal order (Do NOT shuffle these)
-TIME_SERIES_DATASETS = ["RCV1", "Electricity", "Covertype", "Bike", "Sensor"]
+# Datasets that MUST retain temporal order
+# Covertype is often treated as having concept drift, so we keep its order.
+TIME_SERIES_DATASETS = ["Covertype", "Covtype", "Electricity"]
 
 def get_datasets():
-    # You can comment out datasets to run a smaller subset for testing
     target_list = [
-        ("Australian", "Australian"), 
-        ("Ionosphere", "Ionosphere"),
-        ("German", "German"),
-        ("SVMGuide3", "SVMGuide3"),
-        ("Spambase", "Spambase"), 
-        ("Magic04", "Magic04"),
-        ("Musk", "Musk"),
-        ("InternetAds", "InternetAds"),
-        ("Adult", "Adult"),
-        ("w8a", "W8a"),
-        ("RCV1", "RCV1") 
+        ("DryBean", "DryBean"),
+        ("Optdigits", "Optdigits"),
+        ("Frogs", "Frogs"),
+        ("Wine", "Wine"),       # Very small dataset (~178 samples)
+        ("Splice", "Splice"),
+        ("Covertype", "Covtype") 
     ]
     available = []
     for d_name, c_name in target_list:
         if hasattr(capymoa.datasets, c_name):
             available.append((d_name, getattr(capymoa.datasets, c_name)))
         else:
-            print(f"⚠️  Dataset '{d_name}' not found in capymoa.datasets, skipping.")
+            # Fallback for naming variations
+            if c_name == "Covertype" and hasattr(capymoa.datasets, "Covtype"):
+                available.append((d_name, getattr(capymoa.datasets, "Covtype")))
+            else:
+                print(f"⚠️  Dataset '{d_name}' not found, skipping.")
     return available
 
 def get_stream_length(base_stream, default=10000):
@@ -77,21 +76,22 @@ class AutoTuner:
     def __init__(self, max_burn_in=500, safe_ratio=0.2):
         self.max_burn_in = max_burn_in
         self.safe_ratio = safe_ratio
-        # Search space for FOBOS alpha (Learning Rate)
+        # Search space
         self.alphas = [0.01, 0.1, 1.0, 5.0, 10.0]
 
     def tune(self, stream_builder_func, schema, base_seed, n_total):
         best_acc = -1.0
         best_alpha = 0.1 
         
-        # Adaptive Burn-in: Use min(500, 20% of data)
-        # Prevents data leakage on small datasets like Ionosphere (351 samples)
+        # Adaptive Burn-in Calculation
+        # For Wine (178): min(500, 35) = 35. Safe!
         actual_burn_in = min(self.max_burn_in, int(n_total * self.safe_ratio))
-        actual_burn_in = max(10, actual_burn_in) # Minimum 10 samples
+        actual_burn_in = max(10, actual_burn_in) # Minimum floor
 
         for alpha in self.alphas:
             stream = stream_builder_func()
             
+            # FOBOS detects multi-class automatically from schema
             learner = FOBOSClassifier(
                 schema=schema, alpha=alpha, lambda_=0.0001, regularization="l1", random_seed=base_seed
             )
@@ -117,12 +117,11 @@ def run_single_seed_trace(dataset_cls, wrapper_mode, seed, d_name):
     # 1. Base Stream Setup & Smart Shuffling
     def get_base_stream():
         b = dataset_cls()
-        # CRITICAL: Shuffle static datasets to prevent 'Label Sorting' bias
+        # Shuffle static multi-class datasets (Wine, DryBean, etc.)
         if d_name not in TIME_SERIES_DATASETS:
             return ShuffledStream(b, random_seed=seed)
         return b
 
-    # Helper to get length once
     temp_stream = get_base_stream()
     n_total = get_stream_length(temp_stream)
     
@@ -139,23 +138,22 @@ def run_single_seed_trace(dataset_cls, wrapper_mode, seed, d_name):
             return OpenFeatureStream(base, evolution_pattern="eds", n_segments=3, 
                                      overlap_ratio=0.2, total_instances=n_total, random_seed=seed)
     
-    # 3. Auto-Tuning (Adaptive Burn-in)
+    # 3. Auto-Tuning (Adaptive)
     schema = temp_stream.get_schema()
     tuner = AutoTuner(max_burn_in=BURN_IN_SIZE, safe_ratio=0.2)
-    # Pass n_total to enable adaptive burn-in calculation
     best_alpha = tuner.tune(create_wrapped_stream, schema, seed, n_total)
     
     # 4. Final Execution
     stream = create_wrapped_stream()
     learner = FOBOSClassifier(
         schema=schema,
-        alpha=best_alpha,  # Using tuned parameter
+        alpha=best_alpha,
         lambda_=0.0001, 
         regularization="l1", 
         random_seed=seed
     )
     
-    # Adaptive Logging
+    # Adaptive Logging Parameters
     log_interval = max(10, n_total // 100)
     window_size = max(50, min(1000, int(n_total * 0.2)))
     
@@ -172,7 +170,6 @@ def run_single_seed_trace(dataset_cls, wrapper_mode, seed, d_name):
         
         step += 1
         
-        # Predict -> Metric -> Train
         pred = learner.predict(instance)
         is_correct = (pred == instance.y_index)
         
@@ -210,7 +207,6 @@ def plot_and_save_trace(agg_df, mode, d_name, output_dir):
     plt.plot(agg_df['Step'], agg_df['PreqAcc_mean'], label=f'Prequential Acc (w={w_size})', color='tab:blue', linewidth=2)
     plt.plot(agg_df['Step'], agg_df['CumAcc_mean'], label='Cumulative Acc', color='tab:orange', linewidth=2, linestyle='--')
     
-    # Standard Deviation Shading
     plt.fill_between(agg_df['Step'], 
                      np.maximum(0, agg_df['PreqAcc_mean'] - agg_df['PreqAcc_std']), 
                      np.minimum(1, agg_df['PreqAcc_mean'] + agg_df['PreqAcc_std']), 
@@ -240,8 +236,8 @@ def main():
     total_combinations = len(modes) * len(datasets)
     curr_comb = 0
 
-    print(f"🚀 Starting Binary Benchmark")
-    print(f"   Config: {N_REPEATS} Repeats | Adaptive Auto-Tuning | Shuffling | Trace Logging")
+    print(f"🚀 Starting Multi-class Benchmark V3")
+    print(f"   Config: {N_REPEATS} Repeats | Adaptive Auto-Tuning | Shuffling (Static)")
     print(f"   Output: {OUTPUT_DIR}")
     print("=" * 90)
 
@@ -263,7 +259,6 @@ def main():
                 alphas_selected.append(chosen_alpha)
                 print(f"{seed}", end="", flush=True)
                 
-            # Aggregate
             combined_df = pd.concat(all_runs_data, ignore_index=True)
             agg_df = combined_df.groupby('Step').agg({
                 'PreqAcc': ['mean', 'std'],
@@ -275,19 +270,17 @@ def main():
             
             elapsed = time.time() - start_time
             
-            # Print explicit summary for user verification
             if alphas_selected:
                 mode_alpha = max(set(alphas_selected), key=alphas_selected.count) 
             else:
                 mode_alpha = 0.0
             print(f" Done ({elapsed:.1f}s) -> Best α (Mode): {mode_alpha}")
 
-            # Save
             csv_filename = os.path.join(OUTPUT_DIR, f"trace_{mode}_{d_name}.csv")
             agg_df.to_csv(csv_filename, index=False)
             plot_and_save_trace(agg_df, mode, d_name, OUTPUT_DIR)
 
-    print("\n✅ All experiments completed successfully.")
+    print("\n✅ Multi-class Benchmark Completed.")
 
 if __name__ == "__main__":
     main()

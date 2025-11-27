@@ -769,3 +769,68 @@ class EvolvableStream(Stream):
     
     def get_moa_stream(self):
         return None
+    
+
+# === 追加到 src/stream_wrapper.py 末尾 ===
+
+class ShuffledStream(Stream):
+    """
+    A wrapper that buffers the entire base stream into memory and shuffles the order.
+    Essential for static datasets (e.g., Magic04, Spambase) that might be sorted by label.
+    
+    WARNING: This consumes memory proportional to the dataset size. 
+    Safe for UCI datasets (MBs), but DO NOT use for massive streams (GBs).
+    """
+    def __init__(self, base_stream: Stream, random_seed: int = 42):
+        self.base_stream = base_stream
+        self._schema = base_stream.get_schema()
+        self.random_seed = random_seed
+        self._rng = np.random.RandomState(random_seed)
+        
+        # 1. Eagerly load all instances into memory
+        self._instances = []
+        while base_stream.has_more_instances():
+            try:
+                inst = base_stream.next_instance()
+                if inst is not None:
+                    self._instances.append(inst)
+            except Exception:
+                break
+                
+        self.n_instances = len(self._instances)
+        
+        # 2. Create a shuffled index map
+        self._indices = np.arange(self.n_instances)
+        self._rng.shuffle(self._indices)
+        
+        self._ptr = 0
+
+    def has_more_instances(self):
+        return self._ptr < self.n_instances
+
+    def next_instance(self):
+        if not self.has_more_instances():
+            return None
+        
+        # Retrieve instance based on shuffled index
+        real_idx = self._indices[self._ptr]
+        instance = self._instances[real_idx]
+        self._ptr += 1
+        
+        return instance
+
+    def restart(self):
+        """Resets the pointer and re-shuffles (optional behavior)."""
+        self._ptr = 0
+        # Optional: Reshuffle on restart if desired, or keep same shuffle
+        # self._rng.shuffle(self._indices) 
+
+    def get_schema(self):
+        return self._schema
+    
+    def get_num_instances(self):
+        """Crucial for downstream wrappers to know total length."""
+        return self.n_instances
+    
+    def get_moa_stream(self):
+        return None

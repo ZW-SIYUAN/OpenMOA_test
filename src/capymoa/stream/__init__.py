@@ -12,7 +12,7 @@ from ._stream import (
 )
 from .torch import TorchClassifyStream
 from .stream_wrapper import OpenFeatureStream
-from .stream_wrapper import CapriciousStream, TrapezoidalStream, EvolvableStream
+from .stream_wrapper import CapriciousStream, TrapezoidalStream, EvolvableStream, ShuffledStream
 from . import drift, generator, preprocessing
 
 __all__ = [
@@ -34,4 +34,5 @@ __all__ = [
     "EvolvableStream",
     "LibsvmStream",
     "BagOfWordsStream",
+    "ShuffledStream",
 ]
