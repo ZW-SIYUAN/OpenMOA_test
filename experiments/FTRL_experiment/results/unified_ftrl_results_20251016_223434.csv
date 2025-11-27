@@ -1,6 +1,0 @@
-Summary Results
-Dataset,Type,Best Alpha,Avg Accuracy,Std Accuracy,Avg Density,Std Density
-books,sentiment,1.9,72.700,0.516,1.000,0.000
-dvd,sentiment,1.9,74.300,0.374,1.000,0.000
-electronics,sentiment,1.9,78.090,0.261,1.000,0.000
-kitchen,sentiment,1.1,79.920,0.747,1.000,0.000

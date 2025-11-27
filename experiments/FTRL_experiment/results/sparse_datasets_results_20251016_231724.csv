@@ -1,3 +1,0 @@
-Dataset,Best Alpha,Accuracy,Sparsity,Density,Instances,Total Features
-rcv1,0.2,93.341,0.245,0.755,20242,44504
-news20,0.2,88.468,0.839,0.161,19996,1355191
