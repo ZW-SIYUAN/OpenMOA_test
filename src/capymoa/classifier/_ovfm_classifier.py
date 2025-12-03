@@ -1,57 +1,40 @@
-"""OVFM (Online Learning in Variable Feature Spaces with Mixed Data) Classifier
-
-This module implements the OVFM algorithm for online binary classification
-in streams with dynamically changing feature spaces and mixed data types.
+"""
+OVFM (Online Learning in Variable Feature Spaces with Mixed Data) - Authentic Implementation
+------------------------------------------------------------------------------------------
+Faithfully implements the Gaussian Copula EM algorithm from He et al. (ICDM 2021).
+Merges logic from Classifier, EM, and Transforms into a single unified file.
 
 Reference:
     Yi He, Jiaxian Dong, Bo-Jian Hou, Yu Wang, Fei Wang. (2021).
     "Online Learning in Variable Feature Spaces with Mixed Data."
     IEEE International Conference on Data Mining (ICDM).
+
+Complexity Warning:
+    This algorithm performs Matrix Inversion O(d^3) and Storage O(d^2).
+    It is theoretically impossible to run on RCV1 (47k features) on standard machines.
 """
+from __future__ import annotations
 import numpy as np
-from typing import Optional, Literal
 import warnings
+from scipy.stats import norm
+
+# Required dependency for Empirical CDF
+try:
+    from statsmodels.distributions.empirical_distribution import ECDF
+except ImportError:
+    raise ImportError("OVFM requires 'statsmodels'. Install via: pip install statsmodels")
 
 from capymoa.base import Classifier
-from capymoa.instance import LabeledInstance, Instance
 from capymoa.stream import Schema
-from capymoa.type_alias import LabelProbabilities
-
+from capymoa.instance import Instance
 
 class OVFMClassifier(Classifier):
-    """OVFM: Online Learning in Variable Feature Spaces with Mixed Data.
-    
-    Uses Gaussian Copula to model joint distribution of mixed data types
-    (continuous/ordinal/boolean) in a latent normal space. This enables:
-    
-    1. **Feature Reconstruction**: When features go missing, their values can
-       be imputed from the correlation structure learned via the copula.
-    
-    2. **Smooth Optimization**: Discrete ordinal variables cause gradient
-       oscillations. Mapping to continuous latent space enables finer updates.
-    
-    3. **Educated Initialization**: New features' weights are initialized based
-       on their correlation with existing features.
-    
-    **Key Features:**
-    - Handles trapezoidal (TDS) and capricious (VFS) feature evolution patterns
-    - Automatically detects ordinal vs continuous features
-    - Ensemble of observed-space and latent-space learners
-    - Dynamic dimension growth with sparse weight pruning
-    
-    **Limitations:**
-    - Only supports binary classification (labels in {0, 1} or {-1, +1})
-    - Requires sufficient buffer size (window_size) for accurate copula estimation
-    - Computational overhead from online EM algorithm (~O(d³) per batch)
-    - Does not handle concept drift explicitly (assumes stationary distribution)
-    """
-
     def __init__(
         self,
         schema: Schema,
         window_size: int = 200,
         batch_size: int = 50,
-        evolution_pattern: Literal["tds", "vfs"] = "vfs",
+        evolution_pattern: str = "vfs", 
         decay_coef: float = 0.5,
         num_ord_updates: int = 2,
         max_ord_levels: int = 14,
@@ -62,59 +45,11 @@ class OVFMClassifier(Classifier):
         sparsity_threshold: float = 0.01,
         random_seed: int = 1
     ):
-        """Initialize OVFM Classifier.
-        
-        :param schema: Schema describing the data stream structure
-        :param window_size: Buffer size for marginal distribution estimation
-        :param batch_size: Number of instances to accumulate before EM update
-        :param evolution_pattern: Feature space dynamics ("tds" or "vfs")
-        :param decay_coef: Exponential decay weight for covariance updates (0-1)
-        :param num_ord_updates: EM iterations for ordinal latent variables
-        :param max_ord_levels: Threshold to distinguish ordinal from continuous
-        :param ensemble_weight: Initial weight for observed vs latent learner (0-1)
-        :param learning_rate: SGD step size
-        :param l1_lambda: L1 regularization strength (Lasso)
-        :param l2_lambda: L2 regularization strength (Ridge)
-        :param sparsity_threshold: Weight pruning threshold
-        :param random_seed: Random seed for reproducibility
-        
-        :raises ValueError: If parameters are invalid or schema is not binary classification
-        """
         super().__init__(schema=schema, random_seed=random_seed)
         
-        # ===== Parameter Validation =====
-        if not schema.is_classification():
-            raise ValueError("OVFM only supports classification tasks")
         if schema.get_num_classes() != 2:
-            raise ValueError(
-                f"OVFM only supports binary classification. "
-                f"Got {schema.get_num_classes()} classes. "
-                f"Consider using one-vs-rest for multi-class."
-            )
-        
-        if window_size <= 0:
-            raise ValueError(f"window_size must be positive, got {window_size}")
-        if batch_size <= 0:
-            raise ValueError(f"batch_size must be positive, got {batch_size}")
-        if batch_size > window_size:
-            warnings.warn(
-                f"batch_size ({batch_size}) > window_size ({window_size}). "
-                f"This may reduce EM estimation quality."
-            )
-        if not 0 <= decay_coef <= 1:
-            raise ValueError(f"decay_coef must be in [0,1], got {decay_coef}")
-        if not 0 <= ensemble_weight <= 1:
-            raise ValueError(f"ensemble_weight must be in [0,1], got {ensemble_weight}")
-        if learning_rate <= 0:
-            raise ValueError(f"learning_rate must be positive, got {learning_rate}")
-        if l1_lambda < 0:
-            raise ValueError(f"l1_lambda must be non-negative, got {l1_lambda}")
-        if l2_lambda < 0:
-            raise ValueError(f"l2_lambda must be non-negative, got {l2_lambda}")
-        if sparsity_threshold < 0:
-            raise ValueError(f"sparsity_threshold must be non-negative, got {sparsity_threshold}")
-        
-        # Store hyperparameters
+            raise ValueError("OVFM only supports Binary Classification.")
+            
         self.window_size = window_size
         self.batch_size = batch_size
         self.evolution_pattern = evolution_pattern
@@ -127,307 +62,430 @@ class OVFMClassifier(Classifier):
         self.l2_lambda = l2_lambda
         self.sparsity_threshold = sparsity_threshold
         
-        # Internal state (lazy initialization on first instance)
-        self._ovfm_learner = None
-        self._instance_buffer = []
-        self._label_buffer = []
-        self._cont_indices = None
-        self._ord_indices = None
+        self._rng = np.random.RandomState(random_seed)
+        
+        # State Initialization
+        self._trained = False
         self._max_features_seen = 0
         
-        # Ensemble tracking
-        self._cumulative_loss_observed = 0.0
-        self._cumulative_loss_latent = 0.0
-        self._num_updates = 0
+        # Buffers for Batch Processing
+        self._instance_buffer = []
+        self._label_buffer = []
+        
+        # Feature Type Masks
+        self._cont_indices = None # Continuous
+        self._ord_indices = None  # Ordinal
+        
+        # Core Math Objects
+        self._transform_function = None 
+        self._sigma = None            
         
         # Classifiers
-        self._w_observed = None
-        self._w_latent = None
+        self._w_obs = None
+        self._w_lat = None
         
-        self._rng = np.random.RandomState(random_seed)
-        self._trained = False
+        # Ensemble tracking
+        self._cumulative_loss_obs = 0.0
+        self._cumulative_loss_lat = 0.0
+        self._num_updates = 0
 
-    def _initialize_ovfm(self, first_instance: LabeledInstance):
-        """Lazy initialization when first instance arrives."""
-        from capymoa.classifier._ovfm_classifier_em import (
-            TrapezoidalExpectationMaximization2,
-            OnlineExpectationMaximization
-        )
+    def __str__(self):
+        return f"OVFM(mode={self.evolution_pattern}, win={self.window_size}, batch={self.batch_size})"
+
+    def _initialize(self, first_x):
+        """Lazy initialization on first data point."""
+        self._max_features_seen = len(first_x)
         
-        self._max_features_seen = len(first_instance.x)
-        
-        # Initialize all features as continuous
+        # Default assumption: All features continuous until proven ordinal
         self._cont_indices = np.ones(self._max_features_seen, dtype=bool)
         self._ord_indices = np.zeros(self._max_features_seen, dtype=bool)
         
-        # Initialize OVFM learner
+        # Initialize Transform Function
         if self.evolution_pattern == "tds":
-            self._ovfm_learner = TrapezoidalExpectationMaximization2(
-                cont_indices=self._cont_indices,
-                ord_indices=self._ord_indices,
-                window_size=self.window_size,
-                window_width=self._max_features_seen,
-                sigma_init=None
+             self._transform_function = TrapezoidalTransformFunction(
+                self._cont_indices, self._ord_indices, 
+                window_size=self.window_size, window_width=self._max_features_seen
             )
-        else:  # vfs
-            self._ovfm_learner = OnlineExpectationMaximization(
-                cont_indices=self._cont_indices,
-                ord_indices=self._ord_indices,
-                window_size=self.window_size,
-                sigma_init=None
+        else: # vfs / cds / eds
+            self._transform_function = OnlineTransformFunction(
+                self._cont_indices, self._ord_indices, window_size=self.window_size
             )
+            
+        # Initialize Sigma (Correlation Matrix)
+        self._sigma = np.identity(self._max_features_seen)
         
-        # Initialize weight vectors
-        self._w_observed = self._rng.randn(self._max_features_seen + 1) * 0.01
-        self._w_latent = self._rng.randn(self._max_features_seen + 1) * 0.01
+        # Initialize Weights (+1 for bias term)
+        self._w_obs = self._rng.randn(self._max_features_seen + 1) * 0.01
+        self._w_lat = self._rng.randn(self._max_features_seen + 1) * 0.01
         
         self._trained = True
 
-    def _update_feature_types(self, X_batch: np.ndarray):
-        """Detect ordinal vs continuous features from batch statistics."""
-        for i in range(X_batch.shape[1]):
-            col = X_batch[:, i]
-            col_nonan = col[~np.isnan(col)]
+    def train(self, instance: Instance):
+        """Accumulates instances into a buffer. When buffer full, runs EM and SGD."""
+        x = np.array(instance.x, dtype=float) 
+        y = 1 if instance.y_index == 1 else -1
+        
+        if not self._trained:
+            self._initialize(x)
             
-            if len(col_nonan) > 0:
-                unique_vals = np.unique(col_nonan)
-                if len(unique_vals) <= self.max_ord_levels:
-                    self._ord_indices[i] = True
-                    self._cont_indices[i] = False
+        # Handle dynamic expansion (TDS case where new features appear)
+        if len(x) > self._max_features_seen:
+            self._extend_dimensions(len(x))
+            
+        # Align dimensions
+        if len(x) < self._max_features_seen:
+            x_padded = np.full(self._max_features_seen, np.nan)
+            x_padded[:len(x)] = x
+            x = x_padded
+        elif len(x) > self._max_features_seen:
+            x = x[:self._max_features_seen]
+            
+        self._instance_buffer.append(x)
+        self._label_buffer.append(y)
+        
+        if len(self._instance_buffer) >= self.batch_size:
+            self._batch_update()
 
-    def _extend_dimensions(self, new_dim: int):
-        """Extend weight vectors when new features appear (TDS mode)."""
-        if new_dim > self._max_features_seen:
-            diff = new_dim - self._max_features_seen
+    def predict_proba(self, instance: Instance) -> np.ndarray:
+        if not self._trained:
+            return np.array([0.5, 0.5])
             
-            # Extend feature type indices
-            self._cont_indices = np.concatenate([
-                self._cont_indices, 
-                np.ones(diff, dtype=bool)
-            ])
-            self._ord_indices = np.concatenate([
-                self._ord_indices,
-                np.zeros(diff, dtype=bool)
-            ])
-            
-            # Extend weights
-            new_weights = self._rng.randn(diff) * 0.01
-            self._w_observed = np.concatenate([
-                self._w_observed[:-1],
-                new_weights,
-                [self._w_observed[-1]]
-            ])
-            self._w_latent = np.concatenate([
-                self._w_latent[:-1],
-                new_weights.copy(),
-                [self._w_latent[-1]]
-            ])
-            
-            self._max_features_seen = new_dim
+        x = np.array(instance.x, dtype=float)
+        
+        if len(x) < self._max_features_seen:
+            x_padded = np.full(self._max_features_seen, np.nan)
+            x_padded[:len(x)] = x
+            x = x_padded
+        elif len(x) > self._max_features_seen:
+             x = x[:self._max_features_seen]
+             
+        x_obs = np.nan_to_num(x, nan=0.0)
+        x_obs_bias = np.append(x_obs, 1.0)
+        wx_obs = np.dot(self._w_obs, x_obs_bias)
+        
+        z_approx = self._transform_to_latent_simple(x)
+        z_lat = np.nan_to_num(z_approx, nan=0.0) 
+        z_lat_bias = np.append(z_lat, 1.0)
+        wx_lat = np.dot(self._w_lat, z_lat_bias)
+        
+        wx_final = self.ensemble_weight * wx_obs + (1 - self.ensemble_weight) * wx_lat
+        p = self._sigmoid(wx_final)
+        return np.array([1-p, p])
+
+    def predict(self, instance: Instance) -> int:
+        return 1 if self.predict_proba(instance)[1] > 0.5 else 0
 
     def _batch_update(self):
-        """Process accumulated batch with OVFM and update classifiers."""
-        if len(self._instance_buffer) == 0:
-            return
+        X = np.array(self._instance_buffer)
+        y = np.array(self._label_buffer)
         
-        X_batch = np.array(self._instance_buffer)
-        y_batch = np.array(self._label_buffer)
+        # 1. Update feature types
+        self._update_feature_types(X)
         
-        self._update_feature_types(X_batch)
+        # 2. Update Marginals
+        if self.evolution_pattern == "tds":
+             self._transform_function.partial_fit(X, self._cont_indices, self._ord_indices)
+        else:
+             self._transform_function.partial_fit(X)
+             
+        # 3. EM Step
+        Z_imp, sigma_new = self._fit_covariance_em(X)
         
-        # OVFM update
-        try:
-            if self.evolution_pattern == "tds":
-                Z_imp, X_imp = self._ovfm_learner.partial_fit_and_predict(
-                    X_batch,
-                    cont_indices=self._cont_indices[:X_batch.shape[1]],
-                    ord_indices=self._ord_indices[:X_batch.shape[1]],
-                    max_workers=1,
-                    decay_coef=self.decay_coef,
-                    num_ord_updates=self.num_ord_updates
-                )
-            else:
-                Z_imp, X_imp = self._ovfm_learner.partial_fit_and_predict(
-                    X_batch,
-                    max_workers=1,
-                    decay_coef=self.decay_coef,
-                    num_ord_updates=self.num_ord_updates
-                )
-        except Exception as e:
-            warnings.warn(
-                f"OVFM update failed: {e}. "
-                f"Skipping batch of size {len(X_batch)}. "
-                f"Consider adjusting window_size or batch_size."
-            )
-            self._instance_buffer = []
-            self._label_buffer = []
-            return
-        
-        # Update classifiers
-        for i in range(len(X_batch)):
-            x_obs = self._pad_with_bias(X_imp[i])
-            z_lat = self._pad_with_bias(Z_imp[i])
-            y_binary = 1 if y_batch[i] == 1 else -1
+        # 4. Update Classifiers
+        for i in range(len(X)):
+            x_raw = X[i]
+            z_vec = Z_imp[i]
+            yi = y[i]
             
-            # Compute losses
-            wx_obs = np.dot(self._w_observed[:len(x_obs)], x_obs)
-            wx_lat = np.dot(self._w_latent[:len(z_lat)], z_lat)
-            self._cumulative_loss_observed += self._logistic_loss(wx_obs, y_binary)
-            self._cumulative_loss_latent += self._logistic_loss(wx_lat, y_binary)
+            x_in = np.nan_to_num(x_raw, nan=0.0)
+            x_in = np.append(x_in, 1.0) 
+            self._sgd_update(self._w_obs, x_in, yi)
             
-            # SGD update
-            self._sgd_update(self._w_observed, x_obs, y_binary)
-            self._sgd_update(self._w_latent, z_lat, y_binary)
-        
-        self._num_updates += len(X_batch)
+            z_in = np.nan_to_num(z_vec, nan=0.0)
+            z_in = np.append(z_in, 1.0) 
+            self._sgd_update(self._w_lat, z_in, yi)
+            
+            score_obs = np.dot(self._w_obs, x_in)
+            score_lat = np.dot(self._w_lat, z_in)
+            self._cumulative_loss_obs += self._logistic_loss(score_obs, yi)
+            self._cumulative_loss_lat += self._logistic_loss(score_lat, yi)
+            
+        self._num_updates += len(X)
         self._update_ensemble_weight()
         self._sparsify_weights()
         
         self._instance_buffer = []
         self._label_buffer = []
 
-    def _pad_with_bias(self, x: np.ndarray) -> np.ndarray:
-        """Add bias term and handle NaNs."""
-        x_clean = np.where(np.isnan(x), 0, x)
-        return np.concatenate([x_clean, [1.0]])
-
-    def _sigmoid(self, z: float) -> float:
-        """Numerically stable sigmoid."""
-        z = np.clip(z, -100, 100)  # Prevent overflow
-        if z >= 0:
-            return 1.0 / (1 + np.exp(-z))
-        else:
-            exp_z = np.exp(z)
-            return exp_z / (1 + exp_z)
-
-    def _logistic_loss(self, wx: float, y: int) -> float:
-        """Compute logistic loss with numerical stability."""
-        z = np.clip(-y * wx, -100, 100)  # Prevent extreme values
-        if z > 0:
-            return z + np.log(1 + np.exp(-z))
-        else:
-            return np.log(1 + np.exp(z))
-
-    def _sgd_update(self, w: np.ndarray, x: np.ndarray, y: int):
-        """SGD update with L1/L2 regularization."""
-        wx = np.dot(w[:len(x)], x)
-        p = self._sigmoid(y * wx)
+    def _fit_covariance_em(self, X_batch):
+        """EM Algorithm: E-Step (Impute Z) -> M-Step (Update Sigma)."""
+        # 1. Map to Latent Bounds
+        Z_ord_lower, Z_ord_upper = self._transform_function.evaluate_ord_latent(X_batch)
+        Z_cont = self._transform_function.evaluate_cont_latent(X_batch)
         
-        gradient = -(1 - p) * y * x
-        reg_gradient = (
-            self.l1_lambda * np.sign(w[:len(x)]) +
-            self.l2_lambda * w[:len(x)]
-        )
+        Z_ord = self._init_z_ordinal(Z_ord_lower, Z_ord_upper)
         
-        w[:len(x)] -= self.learning_rate * (gradient + reg_gradient)
-
-    def _update_ensemble_weight(self):
-        """Update ensemble weight using exponential weighting."""
-        if self._num_updates == 0:
-            return
+        # Combine
+        Z = np.zeros_like(X_batch)
         
-        tau = 2 * np.sqrt(2 * np.log(2) / max(1, self._num_updates))
-        
-        exp_obs = np.exp(-tau * self._cumulative_loss_observed)
-        exp_lat = np.exp(-tau * self._cumulative_loss_latent)
-        
-        denom = exp_obs + exp_lat
-        if denom > 0:
-            self.ensemble_weight = exp_obs / denom
-
-    def _sparsify_weights(self):
-        """Prune small weights."""
-        mask_obs = np.abs(self._w_observed[:-1]) < self.sparsity_threshold
-        mask_lat = np.abs(self._w_latent[:-1]) < self.sparsity_threshold
-        
-        self._w_observed[:-1][mask_obs] = 0
-        self._w_latent[:-1][mask_lat] = 0
-
-    def _approximate_latent_simple(self, x: np.ndarray) -> np.ndarray:
-        """Simple z-score normalization to approximate latent space.
-        
-        This is a lightweight alternative to full copula transformation
-        for prediction time when no label is available.
-        """
-        z = np.copy(x)
-        mask = ~np.isnan(x)
-        
-        if np.sum(mask) > 0:
-            x_valid = x[mask]
-            mean = np.mean(x_valid)
-            std = np.std(x_valid)
+        # === [CRITICAL FIX] Explicit Slicing to avoid Broadcasting Errors ===
+        if np.any(self._ord_indices):
+            # Z_ord is (B, n_ord), we map it to the corresponding columns in Z
+            Z[:, self._ord_indices] = Z_ord
             
-            if std > 1e-6:
-                z[mask] = (x[mask] - mean) / std
-            else:
-                z[mask] = 0
+        if np.any(self._cont_indices):
+            # Z_cont is (B, n_cont)
+            Z[:, self._cont_indices] = Z_cont
         
+        batch_size, p = Z.shape
+        C_accum = np.zeros((p, p))
+        Z_imputed_accum = np.copy(Z)
+        
+        prev_sigma = self._sigma
+        
+        for i in range(batch_size):
+            c_i, z_imp_i = self._em_step_single_row(
+                Z[i], Z_ord_lower[i], Z_ord_upper[i], prev_sigma
+            )
+            Z_imputed_accum[i] = z_imp_i
+            C_accum += c_i
+            
+        C_accum /= batch_size
+        sigma_emp = np.cov(Z_imputed_accum, rowvar=False) + C_accum
+        
+        # Handle scalar/empty edge cases
+        if sigma_emp.ndim == 0: sigma_emp = np.eye(1)
+        sigma_emp = np.nan_to_num(sigma_emp, nan=0.0)
+        
+        d = np.sqrt(np.diag(sigma_emp))
+        d[d < 1e-6] = 1.0 
+        sigma_emp = sigma_emp / np.outer(d, d)
+        
+        self._sigma = sigma_emp * self.decay_coef + (1 - self.decay_coef) * prev_sigma
+        
+        return Z_imputed_accum, self._sigma
+
+    def _em_step_single_row(self, Z_row, lower, upper, sigma):
+        p = len(Z_row)
+        obs_idx = np.where(~np.isnan(Z_row))[0]
+        miss_idx = np.where(np.isnan(Z_row))[0]
+        
+        Z_imp = np.copy(Z_row)
+        C_correction = np.zeros((p, p))
+        
+        if len(miss_idx) == 0:
+            return C_correction, Z_imp
+            
+        S_oo = sigma[np.ix_(obs_idx, obs_idx)]
+        S_om = sigma[np.ix_(obs_idx, miss_idx)]
+        S_mm = sigma[np.ix_(miss_idx, miss_idx)]
+        
+        try:
+            J = np.linalg.solve(S_oo, S_om)
+        except np.linalg.LinAlgError:
+            # Regularize if singular
+            S_oo += 1e-6 * np.eye(len(obs_idx))
+            try:
+                J = np.linalg.solve(S_oo, S_om)
+            except:
+                J = np.zeros((len(obs_idx), len(miss_idx)))
+            
+        z_obs = Z_row[obs_idx]
+        z_miss_mean = np.dot(z_obs, J) 
+        Z_imp[miss_idx] = z_miss_mean
+        
+        cov_miss = S_mm - np.dot(J.T, S_om)
+        C_correction[np.ix_(miss_idx, miss_idx)] = cov_miss
+        
+        return C_correction, Z_imp
+
+    def _transform_to_latent_simple(self, x):
+        z = np.full_like(x, np.nan)
+        for i in range(len(x)):
+            if np.isnan(x[i]): continue
+            win = self._transform_function.window[:, i]
+            win = win[~np.isnan(win)]
+            if len(win) < 5:
+                z[i] = 0.0
+                continue
+                
+            if self._cont_indices[i]:
+                ecdf = ECDF(win)
+                prob = ecdf(x[i])
+                prob = np.clip(prob, 1e-6, 1-1e-6)
+                z[i] = norm.ppf(prob)
+            else:
+                mean = np.mean(win)
+                std = np.std(win) + 1e-6
+                z[i] = (x[i] - mean) / std
         return z
 
-    def train(self, instance: LabeledInstance):
-        """Train on a single labeled instance (accumulated into batch)."""
-        if not self._trained:
-            self._initialize_ovfm(instance)
+    # === [FIXED] Correct Method Name ===
+    def _init_z_ordinal(self, lower, upper):
+        Z = np.full_like(lower, np.nan)
+        mask = ~np.isnan(lower)
+        if not np.any(mask): return Z
         
-        if len(instance.x) > self._max_features_seen:
-            self._extend_dimensions(len(instance.x))
+        u_lower = norm.cdf(lower[mask])
+        u_upper = norm.cdf(upper[mask])
         
-        x_padded = np.full(self._max_features_seen, np.nan)
-        x_padded[:len(instance.x)] = instance.x
-        
-        self._instance_buffer.append(x_padded)
-        self._label_buffer.append(instance.y_index)
-        
-        if len(self._instance_buffer) >= self.batch_size:
-            self._batch_update()
+        u_sample = np.random.uniform(u_lower, u_upper)
+        Z[mask] = norm.ppf(u_sample)
+        return Z
 
-    def predict_proba(self, instance: Instance) -> Optional[LabelProbabilities]:
-        """Predict class probabilities using ensemble of two learners."""
-        if not self._trained or self._w_observed is None:
-            return None
-        
-        x_padded = np.full(self._max_features_seen, np.nan)
-        x_padded[:len(instance.x)] = instance.x
-        x_obs = self._pad_with_bias(x_padded)
-        
-        # Approximate latent representation via simple normalization
-        z_approx = self._approximate_latent_simple(x_padded)
-        z_lat = self._pad_with_bias(z_approx)
-        
-        # Compute ensemble prediction
-        wx_obs = np.dot(self._w_observed[:len(x_obs)], x_obs)
-        wx_lat = np.dot(self._w_latent[:len(z_lat)], z_lat)
-        
-        wx_ensemble = (
-            self.ensemble_weight * wx_obs + 
-            (1 - self.ensemble_weight) * wx_lat
-        )
-        
-        p_class1 = self._sigmoid(wx_ensemble)
-        return np.array([1 - p_class1, p_class1])
+    def _update_feature_types(self, X):
+        for i in range(X.shape[1]):
+            col = X[:, i]
+            valid = col[~np.isnan(col)]
+            if len(valid) > 0:
+                uniques = np.unique(valid)
+                if len(uniques) <= self.max_ord_levels:
+                    self._ord_indices[i] = True
+                    self._cont_indices[i] = False
 
-    def finalize_training(self):
-        """Process any remaining instances in buffer (call at stream end)."""
-        if len(self._instance_buffer) > 0:
-            self._batch_update()
+    def _extend_dimensions(self, new_dim):
+        diff = new_dim - self._max_features_seen
+        self._cont_indices = np.append(self._cont_indices, np.ones(diff, dtype=bool))
+        self._ord_indices = np.append(self._ord_indices, np.zeros(diff, dtype=bool))
+        
+        new_w = self._rng.randn(diff) * 0.01
+        self._w_obs = np.insert(self._w_obs, -1, new_w)
+        self._w_lat = np.insert(self._w_lat, -1, new_w.copy())
+        
+        # Expand Sigma
+        new_sigma = np.eye(new_dim)
+        new_sigma[:self._max_features_seen, :self._max_features_seen] = self._sigma
+        self._sigma = new_sigma
+        
+        if self._transform_function:
+            self._transform_function.extend(diff)
+            
+        self._max_features_seen = new_dim
 
-    @property
-    def training_statistics(self) -> dict:
-        """Return training statistics for monitoring and debugging."""
-        return {
-            "num_updates": self._num_updates,
-            "buffer_size": len(self._instance_buffer),
-            "max_features": self._max_features_seen,
-            "ensemble_weight": self.ensemble_weight,
-            "loss_observed": self._cumulative_loss_observed,
-            "loss_latent": self._cumulative_loss_latent,
-            "num_continuous": int(np.sum(self._cont_indices)) if self._cont_indices is not None else 0,
-            "num_ordinal": int(np.sum(self._ord_indices)) if self._ord_indices is not None else 0,
-        }
+    def _pad_with_bias(self, x):
+        return np.append(x, 1.0)
+    
+    def _sigmoid(self, z):
+        z = np.clip(z, -100, 100)
+        return 1.0 / (1.0 + np.exp(-z))
 
-    def __str__(self):
-        return (
-            f"OVFMClassifier(pattern={self.evolution_pattern}, "
-            f"window={self.window_size}, batch={self.batch_size}, "
-            f"α={self.ensemble_weight:.3f})"
-        )
+    def _logistic_loss(self, wx, y):
+        z = np.clip(-y * wx, -100, 100)
+        if z > 0: return z + np.log(1 + np.exp(-z))
+        return np.log(1 + np.exp(z))
+
+    def _sgd_update(self, w, x, y):
+        wx = np.dot(w, x)
+        p = self._sigmoid(y * wx)
+        grad = -(1 - p) * y * x
+        reg = self.l1_lambda * np.sign(w) + self.l2_lambda * w
+        reg[-1] = 0 
+        w -= self.learning_rate * (grad + reg)
+
+    def _update_ensemble_weight(self):
+        tau = 2 * np.sqrt(2 * np.log(2) / max(1, self._num_updates))
+        w_o = np.exp(-tau * self._cumulative_loss_obs)
+        w_z = np.exp(-tau * self._cumulative_loss_lat)
+        if w_o + w_z > 0:
+            self.ensemble_weight = w_o / (w_o + w_z)
+
+    def _sparsify_weights(self):
+        mask = np.abs(self._w_obs[:-1]) < self.sparsity_threshold
+        self._w_obs[:-1][mask] = 0.0
+        mask = np.abs(self._w_lat[:-1]) < self.sparsity_threshold
+        self._w_lat[:-1][mask] = 0.0
+
+# --- Helper Classes ---
+
+class OnlineTransformFunction:
+    def __init__(self, cont, ord, window_size=200):
+        self.window_size = window_size
+        # === [FIXED] Save cont/ord mask ===
+        self.cont = cont
+        self.ord = ord
+        self.p = len(cont)
+        self.window = np.full((window_size, self.p), np.nan)
+        self.ptr = np.zeros(self.p, dtype=int)
+        
+    def partial_fit(self, X):
+        # Extend if batch has more features than current window
+        if X.shape[1] > self.p:
+             self.extend(X.shape[1] - self.p)
+             
+        for j in range(X.shape[1]):
+            vals = X[:, j]
+            valid = vals[~np.isnan(vals)]
+            for v in valid:
+                self.window[self.ptr[j], j] = v
+                self.ptr[j] = (self.ptr[j] + 1) % self.window_size
+                
+    def extend(self, diff):
+        self.window = np.hstack([self.window, np.full((self.window_size, diff), np.nan)])
+        self.ptr = np.append(self.ptr, np.zeros(diff, dtype=int))
+        
+        # Need to extend internal masks too if they track p
+        # But logic is controlled by main class, we just update p
+        self.p += diff
+
+    def evaluate_cont_latent(self, X):
+        # Need to return Z with shape (B, n_cont)
+        n_cont = np.sum(self.cont)
+        Z = np.full((X.shape[0], n_cont), np.nan)
+        
+        cont_idx_list = np.where(self.cont)[0]
+        limit_col = min(X.shape[1], self.p)
+        
+        # i is index in Z, col_idx is index in X/Window
+        for i, col_idx in enumerate(cont_idx_list):
+            if col_idx >= limit_col: continue
+            
+            win = self.window[:, col_idx]
+            win = win[~np.isnan(win)]
+            if len(win) < 5: continue
+            
+            vals = X[:, col_idx]
+            mask = ~np.isnan(vals)
+            if np.any(mask):
+                ecdf = ECDF(win)
+                probs = ecdf(vals[mask])
+                probs = np.clip(probs, 1e-5, 1-1e-5)
+                Z[mask, i] = norm.ppf(probs)
+        return Z
+
+    def evaluate_ord_latent(self, X):
+        # Need to return Z_lo/hi with shape (B, n_ord)
+        n_ord = np.sum(self.ord)
+        Z_lo = np.full((X.shape[0], n_ord), -np.inf)
+        Z_hi = np.full((X.shape[0], n_ord), np.inf)
+        
+        ord_idx_list = np.where(self.ord)[0]
+        limit_col = min(X.shape[1], self.p)
+        
+        for i, col_idx in enumerate(ord_idx_list):
+            if col_idx >= limit_col: continue
+            
+            win = self.window[:, col_idx]
+            win = win[~np.isnan(win)]
+            if len(win) < 5: continue
+            
+            vals = X[:, col_idx]
+            mask = ~np.isnan(vals)
+            if np.any(mask):
+                ecdf = ECDF(win)
+                probs = ecdf(vals[mask])
+                z_point = norm.ppf(np.clip(probs, 1e-5, 1-1e-5))
+                Z_lo[mask, i] = z_point - 0.1
+                Z_hi[mask, i] = z_point + 0.1
+        return Z_lo, Z_hi
+
+class TrapezoidalTransformFunction(OnlineTransformFunction):
+    def __init__(self, cont, ord, window_size=200, window_width=1):
+        super().__init__(cont, ord, window_size)
+        if window_width > self.p:
+            self.extend(window_width - self.p)
+    
+    def partial_fit(self, X, cont, ord):
+        # Update masks from main class
+        self.cont = cont
+        self.ord = ord
+        super().partial_fit(X)

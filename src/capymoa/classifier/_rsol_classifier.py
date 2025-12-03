@@ -1,200 +1,204 @@
-"""capymoa/classifier/_rsol_classifier.py"""
 from __future__ import annotations
-from typing import Optional
 import numpy as np
 
 from capymoa.base import Classifier
 from capymoa.stream import Schema
 from capymoa.instance import Instance
 
-
 class RSOLClassifier(Classifier):
-    """Robust Sparse Online Learning (RSOL) Classifier.
+    """
+    RSOL (Robust Sparse Online Learning) - Optimized Implementation.
     
-    Handles online binary classification with dynamically evolving feature spaces
-    using ℓ1,2-norm regularization for sparsity. Designed for scenarios where
-    features can appear (incremental) or disappear (decremental) over time.
+    Optimizations:
+    1. Vectorized L1,2 Norm Sparsity (No Python loops).
+    2. Ring Buffer for Sliding Window (Avoids expensive np.roll).
+    3. Auto-expanding Weights (Handles RCV1 dynamic features).
+    4. Wrapper-Aware (Handles sparse input / global indices).
     
     Reference:
-    
-    Chen, Z., He, Y., Wu, D., Zhan, H., Sheng, V., & Zhang, K. (2024).
-    Robust Sparse Online Learning for Data Streams with Streaming Features.
-    SIAM International Conference on Data Mining (SDM).
-    
-    Example:
-    
-    >>> from capymoa.datasets import Electricity
-    >>> from capymoa.classifier import RSOLClassifier
-    >>> from capymoa.stream import EvolvingFeatureStream
-    >>> from capymoa.evaluation import prequential_evaluation
-    >>> 
-    >>> base_stream = Electricity()
-    >>> evolving_stream = EvolvingFeatureStream(base_stream, d_min=2, d_max=6)
-    >>> learner = RSOLClassifier(
-    ...     schema=evolving_stream.get_schema(),
-    ...     lambda_param=50,
-    ...     mu=1,
-    ...     L=1000
-    ... )
-    >>> results = prequential_evaluation(evolving_stream, learner, max_instances=10000)
+        Chen, Z., et al. (2024). Robust Sparse Online Learning... SDM.
     """
 
     def __init__(
         self,
         schema: Schema,
-        lambda_param: float = 50.0,
-        mu: float = 1.0,
-        L: int = 1000,
-        d_max: int = 1000,
+        lambda_param: float = 50.0, # Regularization (Sparsity)
+        mu: float = 1.0,            # PA Smoothness
+        L: int = 1000,              # Window Size
         random_seed: int = 1,
     ):
-        """Initialize RSOL Classifier.
-        
-        :param schema: The schema of the stream
-        :param lambda_param: Regularization parameter for ℓ1,2-norm sparsity (larger = more sparse)
-        :param mu: Penalty parameter for PA update (smaller = more aggressive)
-        :param L: Sliding window size for storing historical weights
-        :param d_max: Maximum expected feature dimension
-        :param random_seed: Random seed for reproducibility
-        """
         super().__init__(schema=schema, random_seed=random_seed)
         
-        np.random.seed(random_seed)
-        
-        # Algorithm parameters
+        if schema.get_num_classes() != 2:
+            raise ValueError("RSOL only supports Binary Classification.")
+
         self.lambda_param = lambda_param
         self.mu = mu
         self.L = L
-        self.d_max = d_max
         
-        # Weight matrix W: d_max × L (features × window)
-        self.W = np.zeros((d_max, L))
+        np.random.seed(random_seed)
         
-        # Current feature dimension
+        # Initialize W (Features x Window)
+        # Start small, expand later
+        initial_dim = schema.get_num_attributes()
+        if initial_dim == 0: initial_dim = 100
+        
+        self.W = np.zeros((initial_dim, self.L))
+        
+        # Ring Buffer Pointer (Points to the 'newest' column)
+        self.ptr = 0
+        
         self.current_dim = 0
-        
-        # Time step counter
         self.t = 0
 
     def __str__(self):
-        return (f"RSOLClassifier(lambda={self.lambda_param}, mu={self.mu}, "
-                f"L={self.L}, d_max={self.d_max})")
+        return f"RSOLClassifier(lambda={self.lambda_param}, mu={self.mu}, L={self.L})"
+
+    def _ensure_dimension(self, target_dim):
+        """Dynamically expand W if new features appear."""
+        current_rows = self.W.shape[0]
+        if target_dim > current_rows:
+            new_rows = max(target_dim, int(current_rows * 1.5))
+            new_W = np.zeros((new_rows, self.L))
+            new_W[:current_rows, :] = self.W
+            self.W = new_W
 
     def train(self, instance: Instance):
-        """Train on a single instance with potentially evolved features."""
         self.t += 1
         
-        # Extract features and label
-        x_full = np.array(instance.x)
-        d_current = len(x_full)
-        y = 1 if instance.y_index == 1 else -1  # Convert to {-1, +1}
+        # 1. Parse Input
+        indices, values = self._get_sparse_x(instance)
         
-        # Determine if decremental or incremental
-        if self.current_dim >= d_current:
-            # Decremental case: features disappeared
-            w_new = self._update_decremental(x_full, y, d_current)
+        # Determine feature dimension
+        if len(indices) > 0:
+            d_current = int(np.max(indices) + 1)
         else:
-            # Incremental case: new features appeared
-            w_new = self._update_incremental(x_full, y, d_current)
+            d_current = self.current_dim
+            
+        self._ensure_dimension(d_current)
         
-        # Shift sliding window and add new weight vector
-        self.W = np.roll(self.W, -1, axis=1)
-        self.W[:, -1] = 0
-        self.W[:d_current, -1] = w_new
+        # Construct Dense Vector xt (relative to d_current)
+        # Needed because RSOL operates on dense weight vectors w_s / w_padded
+        xt = np.zeros(d_current)
+        xt[indices] = values
         
-        # Apply ℓ1,2-norm sparsification (Theorem 3.3)
-        self._apply_l12_sparsity()
+        y = 1 if instance.y_index == 1 else -1
         
-        # Update current dimension
+        # 2. Retrieve most recent weights
+        # In Ring Buffer, the previous weight is at (ptr - 1)
+        prev_ptr = (self.ptr - 1) % self.L
+        w_prev_full = self.W[:, prev_ptr]
+        
+        # 3. PA Update (Theorems 3.1 & 3.2 Unified Logic)
+        # Logic: w_new = w_prev + gamma * y * x
+        # Whether incremental or decremental, we just need to align dimensions.
+        # Since we use a global matrix W that grows, 'w_prev' is already padded or truncated conceptually.
+        
+        # Use valid weights up to d_current
+        w_s = w_prev_full[:d_current]
+        
+        # Loss: max(0, 1 - y * w.x)
+        margin = np.dot(w_s, xt)
+        loss = max(0, 1 - y * margin)
+        
+        # Gamma
+        norm_sq = np.linalg.norm(xt)**2
+        denom = norm_sq + 1/(2*self.mu)
+        gamma = loss / denom if denom > 0 else 0
+        
+        # Calculate new weight vector
+        w_new = w_s + gamma * y * xt
+        
+        # 4. Store in Ring Buffer
+        # Write to 'ptr' column
+        self.W[:d_current, self.ptr] = w_new
+        # Zero out any rows beyond d_current (if dimension shrunk) - Optional but clean
+        if d_current < self.W.shape[0]:
+            self.W[d_current:, self.ptr] = 0.0
+            
+        # 5. Apply L1,2 Sparsity (Vectorized Theorem 3.3)
+        self._apply_l12_sparsity(d_current)
+        
+        # Advance pointer
+        self.ptr = (self.ptr + 1) % self.L
         self.current_dim = d_current
 
     def predict(self, instance: Instance) -> int:
-        """Predict class label."""
-        x_full = np.array(instance.x)
-        d_current = len(x_full)
-        
-        # Use the most recent weight vector
-        if self.current_dim >= d_current:
-            # Decremental: use survival features
-            w_pred = self.W[:d_current, -1]
-            margin = np.dot(w_pred, x_full)
-        else:
-            # Incremental: pad with zeros
-            w_padded = np.concatenate([
-                self.W[:self.current_dim, -1],
-                np.zeros(d_current - self.current_dim)
-            ])
-            margin = np.dot(w_padded, x_full)
-        
-        return 1 if margin > 0 else 0
+        prob = self.predict_proba(instance)[1]
+        return 1 if prob > 0.5 else 0
 
     def predict_proba(self, instance: Instance) -> np.ndarray:
-        """Predict class probabilities."""
-        x_full = np.array(instance.x)
-        d_current = len(x_full)
+        indices, values = self._get_sparse_x(instance)
         
-        if self.current_dim >= d_current:
-            w_pred = self.W[:d_current, -1]
-            margin = np.dot(w_pred, x_full)
-        else:
-            w_padded = np.concatenate([
-                self.W[:self.current_dim, -1],
-                np.zeros(d_current - self.current_dim)
-            ])
-            margin = np.dot(w_padded, x_full)
-        
-        # Use sigmoid for probability
-        prob_class_1 = 1.0 / (1.0 + np.exp(-margin))
-        prob_class_0 = 1.0 - prob_class_1
-        
-        return np.array([prob_class_0, prob_class_1])
-
-    def _update_decremental(self, xt: np.ndarray, yt: float, d_current: int) -> np.ndarray:
-        """Update for decremental case (Theorem 3.1)."""
-        # Survival features weights
-        w_s = self.W[:d_current, -1]
-        
-        # Calculate hinge loss
-        loss = max(0, 1 - yt * np.dot(w_s, xt))
-        
-        # Closed-form PA update
-        gamma = loss / (np.linalg.norm(xt)**2 + 1/(2*self.mu))
-        w_new = w_s + gamma * yt * xt
-        
-        return w_new
-
-    def _update_incremental(self, xt: np.ndarray, yt: float, d_current: int) -> np.ndarray:
-        """Update for incremental case (Theorem 3.2)."""
-        # Survival and new features
-        x_s = xt[:self.current_dim]
-        x_n = xt[self.current_dim:]
-        
-        # Pad weight vector with zeros for new features
-        w_padded = np.concatenate([
-            self.W[:self.current_dim, -1],
-            np.zeros(d_current - self.current_dim)
-        ])
-        
-        # Calculate hinge loss
-        loss = max(0, 1 - yt * np.dot(w_padded, xt))
-        
-        # Closed-form PA update
-        gamma = loss / (np.linalg.norm(xt)**2 + 1/(2*self.mu))
-        w_s_new = self.W[:self.current_dim, -1] + gamma * yt * x_s
-        w_n_new = gamma * yt * x_n
-        w_new = np.concatenate([w_s_new, w_n_new])
-        
-        return w_new
-
-    def _apply_l12_sparsity(self):
-        """Apply ℓ1,2-norm regularization for sparsity (Theorem 3.3)."""
-        for i in range(self.d_max):
-            row = self.W[i, :]
-            row_norm = np.linalg.norm(row)
+        if len(indices) == 0:
+            return np.array([0.5, 0.5])
             
-            if row_norm <= self.lambda_param:
-                # Set entire row to zero (aggressive sparsification)
-                self.W[i, :] = 0
-            else:
-                # Soft-thresholding
-                self.W[i, :] = (1 - self.lambda_param / row_norm) * row
+        # Get latest weights
+        prev_ptr = (self.ptr - 1) % self.L
+        w_pred = self.W[:, prev_ptr]
+        
+        # Sparse Dot Product
+        # w_pred is dense (N,), values is (k,), indices is (k,)
+        margin = 0.0
+        # Safe indexing
+        valid_mask = indices < w_pred.shape[0]
+        if np.any(valid_mask):
+            valid_idx = indices[valid_mask]
+            valid_val = values[valid_mask]
+            margin = np.dot(w_pred[valid_idx], valid_val)
+            
+        prob = 1.0 / (1.0 + np.exp(-np.clip(margin, -50, 50)))
+        return np.array([1 - prob, prob])
+
+    def _apply_l12_sparsity(self, active_rows):
+        """
+        Theorem 3.3: Row-wise L2 Norm Soft Thresholding.
+        w_i = 0  if ||w_i|| <= lambda
+        w_i = (1 - lambda/||w_i||) * w_i  otherwise
+        """
+        # We process ONLY the active rows to save time
+        # Matrix slice: (active_rows, L)
+        W_sub = self.W[:active_rows, :]
+        
+        # 1. Compute L2 Norm of each ROW
+        # axis=1 means sum across columns (time steps)
+        row_norms = np.linalg.norm(W_sub, axis=1)
+        
+        # 2. Identify rows to Zero
+        zero_mask = row_norms <= self.lambda_param
+        
+        # 3. Identify rows to Shrink
+        shrink_mask = ~zero_mask
+        
+        # Apply Zeroing
+        self.W[:active_rows][zero_mask] = 0.0
+        
+        # Apply Shrinkage
+        if np.any(shrink_mask):
+            # Scaling factor: (1 - lambda / norm)
+            scales = 1.0 - self.lambda_param / row_norms[shrink_mask]
+            # Broadcast scale to all L columns
+            # scale shape: (n_shrink, 1) * W_sub shape: (n_shrink, L)
+            self.W[:active_rows][shrink_mask] *= scales[:, np.newaxis]
+
+    def _get_sparse_x(self, instance: Instance):
+        """Wrapper-compatible sparse extractor."""
+        if hasattr(instance, "feature_indices"):
+            return instance.feature_indices, instance.x
+        if hasattr(instance, "x_index") and hasattr(instance, "x_value"):
+            return instance.x_index, instance.x_value
+        
+        x = instance.x
+        if not isinstance(x, np.ndarray): x = np.array(x)
+        valid_mask = (x != 0) & (~np.isnan(x))
+        indices = np.where(valid_mask)[0]
+        values = x[indices]
+        return indices, values
+    
+    def get_sparsity(self):
+        # Sparsity of the latest weight vector
+        prev_ptr = (self.ptr - 1) % self.L
+        w_latest = self.W[:self.current_dim, prev_ptr]
+        if w_latest.size == 0: return 1.0
+        n_zeros = np.sum(np.abs(w_latest) < 1e-10)
+        return n_zeros / w_latest.size

@@ -1,633 +1,353 @@
-"""_old3s_classifier.py - OLD³S Classifier for CapyMOA"""
+"""_old3s_classifier.py - OLD³S Classifier for CapyMOA (Optimized Lifelong Logic)"""
 from __future__ import annotations
-from typing import Optional, Literal, List
+from typing import Optional, List, Dict
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from collections import deque
 
 from capymoa.base import Classifier
 from capymoa.stream import Schema
 from capymoa.instance import Instance
 
-
-# ======================== VAE Components ========================
+# ======================== Neural Network Components ========================
 
 class VAE_Shallow(nn.Module):
-    """Variational Autoencoder for shallow feature spaces."""
-    
-    def __init__(self, input_dim: int, hidden_dim: int, latent_dim: int) -> None:
-        super(VAE_Shallow, self).__init__()
-        
-        # Encoder
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
+    """Variational Autoencoder for feature extraction."""
+    def __init__(self, input_dim: int, hidden_dim: int, latent_dim: int):
+        super().__init__()
+        self.encoder = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU()
+        )
         self.fc_mu = nn.Linear(hidden_dim, latent_dim)
         self.fc_logvar = nn.Linear(hidden_dim, latent_dim)
         
-        # Decoder
-        self.fc3 = nn.Linear(latent_dim, hidden_dim)
-        self.fc4 = nn.Linear(hidden_dim, input_dim)
+        self.decoder = nn.Sequential(
+            nn.Linear(latent_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, input_dim),
+            nn.Sigmoid() 
+        )
     
-    def encode(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        h = F.relu(self.fc1(x))
-        mu = self.fc_mu(h)
-        logvar = self.fc_logvar(h)
-        return mu, logvar
-    
-    def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
+    def reparameterize(self, mu, logvar):
         std = torch.exp(0.5 * logvar)
         eps = torch.randn_like(std)
         return mu + eps * std
     
-    def decode(self, z: torch.Tensor) -> torch.Tensor:
-        h = F.relu(self.fc3(z))
-        return torch.sigmoid(self.fc4(h))  # ✅ 保留 sigmoid，配合 BCE 损失
-    
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        mu, logvar = self.encode(x)
+    def forward(self, x):
+        h = self.encoder(x)
+        mu = self.fc_mu(h)
+        logvar = self.fc_logvar(h)
         z = self.reparameterize(mu, logvar)
-        x_recon = self.decode(z)
-        return z, x_recon, mu, logvar
-
-
-# ======================== HBP MLP Components ========================
-
-class HBPLayer(nn.Module):
-    """Single layer block for HBP."""
-    
-    def __init__(self, in_dim: int, out_dim: int) -> None:
-        super(HBPLayer, self).__init__()
-        self.linear = nn.Linear(in_dim, out_dim)
-        self.relu = nn.ReLU()
-    
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.relu(self.linear(x))
-
+        recon = self.decoder(z)
+        return z, recon, mu, logvar
 
 class HBPMLP(nn.Module):
-    """Multi-layer perceptron with Hedge Backpropagation (HBP).
-    
-    Each layer outputs a prediction, and HBP adaptively weights them.
-    """
-    
-    def __init__(self, input_dim: int, num_classes: int, num_layers: int = 5) -> None:
-        super(HBPMLP, self).__init__()
+    """Multi-exit MLP with Hedge Backpropagation."""
+    def __init__(self, input_dim: int, num_classes: int, num_layers: int = 3):
+        super().__init__()
+        self.layers = nn.ModuleList()
+        self.classifiers = nn.ModuleList()
+        hidden_dim = 64 
         
-        self.num_layers = num_layers
-        self.num_classes = num_classes
+        # Layer 1
+        self.layers.append(nn.Sequential(nn.Linear(input_dim, hidden_dim), nn.ReLU()))
+        self.classifiers.append(nn.Linear(hidden_dim, num_classes))
         
-        # Hidden layers
-        self.hidden_layers = nn.ModuleList()
-        self.output_layers = nn.ModuleList()
-        
-        current_dim = input_dim
-        for _ in range(num_layers):
-            self.hidden_layers.append(HBPLayer(current_dim, current_dim))
-            self.output_layers.append(nn.Linear(current_dim, num_classes))
-    
-    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
-        """Forward pass returning predictions from all layers."""
-        predictions = []
-        hidden = x
-        
-        for i in range(self.num_layers):
-            hidden = self.hidden_layers[i](hidden)
-            pred = self.output_layers[i](hidden)
-            predictions.append(pred)
-        
-        return predictions
-
+        # Subsequent layers
+        for _ in range(num_layers - 1):
+            self.layers.append(nn.Sequential(nn.Linear(hidden_dim, hidden_dim), nn.ReLU()))
+            self.classifiers.append(nn.Linear(hidden_dim, num_classes))
+            
+    def forward(self, x):
+        preds = []
+        feat = x
+        for i, layer in enumerate(self.layers):
+            feat = layer(feat)
+            preds.append(self.classifiers[i](feat))
+        return preds
 
 # ======================== OLD³S Classifier ========================
 
 class OLD3SClassifier(Classifier):
-    """Online Learning Deep models from Data of Double Streams (OLD³S).
+    """
+    OLD³S (Online Learning Deep models from Data of Double Streams).
     
-    This classifier handles evolving feature spaces using:
-    - Variational Autoencoders (VAE) to learn shared latent representations
-    - Hedge Backpropagation (HBP) for adaptive model depth
-    - Ensemble learning to combine old and new feature space classifiers
+    This implementation supports Lifelong Learning (multiple transitions) by 
+    automatically detecting feature space shifts and aligning latent spaces.
     
-    Reference:
+    Features:
+    - Supports infinite sequence of feature spaces (S1 -> S2 -> S3 ...).
+    - Reactive Drift Detection: Automatically detects Overlap/Shift based on feature indices.
+    - Knowledge Distillation: Aligns new latent space with the previous one.
     
-    Lian, H., Wu, D., Hou, B.-J., Wu, J., & He, Y. (2024).
-    Online Learning From Evolving Feature Spaces With Deep Variational Models.
-    IEEE Transactions on Knowledge and Data Engineering, 36(8), 4144-4162.
-    
-    Example:
-    
-    >>> from capymoa.datasets import Electricity
-    >>> from capymoa.classifier import OLD3SClassifier
-    >>> from capymoa.evaluation import prequential_evaluation
-    >>> stream = Electricity()
-    >>> schema = stream.get_schema()
-    >>> learner = OLD3SClassifier(
-    ...     schema=schema,
-    ...     s1_feature_indices=[0, 1, 2, 3],
-    ...     s2_feature_indices=[2, 3, 4, 5],
-    ...     overlap_size=500,
-    ...     switch_point=5000,
-    ...     latent_dim=20,
-    ...     hidden_dim=128
-    ... )
-    >>> results = prequential_evaluation(stream, learner, max_instances=10000)
+    Reference: Lian, H., et al. (2024). IEEE TKDE.
     """
     
     def __init__(
         self,
         schema: Schema,
-        s1_feature_indices: List[int],
-        s2_feature_indices: List[int],
-        overlap_size: int = 500,
-        switch_point: int = 5000,
         latent_dim: int = 20,
         hidden_dim: int = 128,
-        num_hbp_layers: int = 5,
+        num_hbp_layers: int = 3,
         learning_rate: float = 0.001,
-        beta: float = 0.9,
-        eta: float = -0.05,
+        beta: float = 0.99,      # HBP decay rate
+        eta: float = 0.01,       # Ensemble update rate
         random_seed: int = 1,
-    ) -> None:
-        """Initialize OLD³S Classifier.
-        
-        :param schema: Stream schema
-        :param s1_feature_indices: Feature indices for first space S1
-        :param s2_feature_indices: Feature indices for second space S2
-        :param overlap_size: Number of instances in overlapping period B
-        :param switch_point: Instance number where S1 -> S2 transition occurs
-        :param latent_dim: Dimensionality of VAE latent space
-        :param hidden_dim: Hidden layer size for VAE
-        :param num_hbp_layers: Number of layers in HBP classifier
-        :param learning_rate: Learning rate for model updates
-        :param beta: Decay rate for HBP hedge weights
-        :param eta: Exponential weight parameter for ensemble
-        :param random_seed: Random seed
-        """
+    ):
         super().__init__(schema=schema, random_seed=random_seed)
         
-        # ============ Input Validation ============
-        self._validate_inputs(
-            s1_feature_indices, s2_feature_indices, overlap_size, 
-            switch_point, latent_dim, hidden_dim, num_hbp_layers,
-            learning_rate, beta, eta
-        )
-        
-        # Set seeds
-        np.random.seed(random_seed)
-        torch.manual_seed(random_seed)
-        
-        # Device configuration
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        
-        # Feature space configuration
-        self.s1_indices = np.array(s1_feature_indices)
-        self.s2_indices = np.array(s2_feature_indices)
-        self.d1 = len(s1_feature_indices)
-        self.d2 = len(s2_feature_indices)
-        
-        # Temporal configuration
-        self.B = overlap_size
-        self.T1 = switch_point
-        self.overlap_start = self.T1 - self.B
-        
-        # Model hyperparameters
         self.latent_dim = latent_dim
         self.hidden_dim = hidden_dim
         self.num_hbp_layers = num_hbp_layers
         self.lr = learning_rate
         self.beta = beta
         self.eta = eta
-        
-        # Number of classes
         self.num_classes = schema.get_num_classes()
         
-        # Initialize VAE models
-        self.vae_s1 = VAE_Shallow(self.d1, hidden_dim, latent_dim).to(self.device)
-        self.vae_s2 = VAE_Shallow(self.d2, hidden_dim, latent_dim).to(self.device)
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        torch.manual_seed(random_seed)
+        self._rng = np.random.RandomState(random_seed)
         
-        # Initialize HBP classifiers
-        self.classifier_s1 = HBPMLP(latent_dim, self.num_classes, num_hbp_layers).to(self.device)
-        self.classifier_s2 = HBPMLP(latent_dim, self.num_classes, num_hbp_layers).to(self.device)
+        # === Lifelong State Management ===
+        # We maintain only TWO models at any time: 
+        # 1. Prev (The teacher/regularizer)
+        # 2. Curr (The student/active learner)
+        self.model_curr = None
+        self.model_prev = None
         
-        # Optimizers
-        self.optimizer_vae_s1 = torch.optim.Adam(self.vae_s1.parameters(), lr=learning_rate)
-        self.optimizer_vae_s2 = torch.optim.Adam(self.vae_s2.parameters(), lr=learning_rate)
-        self.optimizer_clf_s1 = torch.optim.Adam(self.classifier_s1.parameters(), lr=learning_rate)
-        self.optimizer_clf_s2 = torch.optim.Adam(self.classifier_s2.parameters(), lr=learning_rate)
+        # Ensemble weights for Curr and Prev
+        self.w_curr = 1.0
+        self.w_prev = 0.0
         
-        # HBP hedge weights (one per layer)
-        self.alpha_s1 = torch.ones(num_hbp_layers, device=self.device) / num_hbp_layers
-        self.alpha_s2 = torch.ones(num_hbp_layers, device=self.device) / num_hbp_layers
+        # Feature Space Tracking
+        self.curr_indices = None    # Indices of current stable space
+        self.prev_indices = None    # Indices of previous stable space
+        self.is_overlap = False
         
-        # Ensemble weights
-        self.ensemble_weight_s1 = 0.5
-        self.ensemble_weight_s2 = 0.5
+        # Statistics for Normalization
+        self.stats_curr = {'min': None, 'max': None}
+        self.stats_prev = {'min': None, 'max': None}
         
-        # Cumulative loss tracking
-        self.cumulative_loss_s1: List[float] = []
-        self.cumulative_loss_s2: List[float] = []
+        # Loss History for Ensemble
+        self.loss_hist_curr = deque(maxlen=50)
+        self.loss_hist_prev = deque(maxlen=50)
         
-        # Instance counter
-        self.instance_count = 0
-        
-        # Flag for first instance validation
-        self._validated = False
-        
-        # ✅ 统计量用于归一化（滑动窗口统计）
-        self.s1_min = None
-        self.s1_max = None
-        self.s2_min = None
-        self.s2_max = None
+        self.t = 0
 
-    def _validate_inputs(
-        self,
-        s1_indices: List[int],
-        s2_indices: List[int],
-        overlap_size: int,
-        switch_point: int,
-        latent_dim: int,
-        hidden_dim: int,
-        num_hbp_layers: int,
-        learning_rate: float,
-        beta: float,
-        eta: float
-    ) -> None:
-        """Validate constructor inputs."""
-        # Check feature indices
-        if not s1_indices or not s2_indices:
-            raise ValueError("Feature indices cannot be empty")
-        
-        if len(s1_indices) != len(set(s1_indices)):
-            raise ValueError("S1 feature indices contain duplicates")
-        
-        if len(s2_indices) != len(set(s2_indices)):
-            raise ValueError("S2 feature indices contain duplicates")
-        
-        if any(idx < 0 for idx in s1_indices):
-            raise ValueError("S1 feature indices must be non-negative")
-        
-        if any(idx < 0 for idx in s2_indices):
-            raise ValueError("S2 feature indices must be non-negative")
-        
-        # Check temporal parameters
-        if overlap_size <= 0:
-            raise ValueError(f"overlap_size must be positive, got {overlap_size}")
-        
-        if switch_point <= overlap_size:
-            raise ValueError(
-                f"switch_point ({switch_point}) must be greater than "
-                f"overlap_size ({overlap_size})"
-            )
-        
-        # Check model dimensions
-        if latent_dim <= 0:
-            raise ValueError(f"latent_dim must be positive, got {latent_dim}")
-        
-        if hidden_dim <= 0:
-            raise ValueError(f"hidden_dim must be positive, got {hidden_dim}")
-        
-        if num_hbp_layers <= 0:
-            raise ValueError(f"num_hbp_layers must be positive, got {num_hbp_layers}")
-        
-        # Check hyperparameters
-        if learning_rate <= 0:
-            raise ValueError(f"learning_rate must be positive, got {learning_rate}")
-        
-        if not 0 < beta < 1:
-            raise ValueError(f"beta must be in (0, 1), got {beta}")
+    def __str__(self):
+        return f"OLD3S(latent={self.latent_dim}, lr={self.lr})"
 
-    def _validate_instance_features(self, instance: Instance) -> None:
-        """Validate instance features against configured indices."""
-        if self._validated:
-            return
+    def _create_model_bundle(self, input_dim):
+        """Factory to create VAE + Classifier + Optimizers."""
+        vae = VAE_Shallow(input_dim, self.hidden_dim, self.latent_dim).to(self.device)
+        clf = HBPMLP(self.latent_dim, self.num_classes, self.num_hbp_layers).to(self.device)
         
-        x_full = np.array(instance.x)
-        num_features = len(x_full)
-        
-        max_s1_idx = self.s1_indices.max()
-        max_s2_idx = self.s2_indices.max()
-        
-        if max_s1_idx >= num_features:
-            raise ValueError(
-                f"S1 feature index {max_s1_idx} exceeds available features "
-                f"(0-{num_features - 1})"
-            )
-        
-        if max_s2_idx >= num_features:
-            raise ValueError(
-                f"S2 feature index {max_s2_idx} exceeds available features "
-                f"(0-{num_features - 1})"
-            )
-        
-        self._validated = True
+        return {
+            'vae': vae,
+            'clf': clf,
+            'opt_vae': torch.optim.Adam(vae.parameters(), lr=self.lr),
+            'opt_clf': torch.optim.Adam(clf.parameters(), lr=self.lr),
+            'hbp_weights': torch.ones(self.num_hbp_layers, device=self.device) / self.num_hbp_layers,
+            'dim': input_dim
+        }
 
-    def _normalize_to_01(self, x: np.ndarray, indices: np.ndarray, is_s1: bool) -> np.ndarray:
-        """归一化特征到 [0, 1] 范围（Min-Max normalization）
+    def _normalize(self, x_raw, indices, stats):
+        """Online Min-Max Normalization to [0, 1]."""
+        x_sub = x_raw[indices]
         
-        :param x: 完整特征向量
-        :param indices: 要提取的特征索引
-        :param is_s1: 是否为 S1 特征空间
-        :return: 归一化后的特征
-        """
-        x_subset = x[indices]
-        
-        # 更新统计量（简单的滑动最小最大值）
-        if is_s1:
-            if self.s1_min is None:
-                self.s1_min = x_subset.copy()
-                self.s1_max = x_subset.copy()
-            else:
-                self.s1_min = np.minimum(self.s1_min, x_subset)
-                self.s1_max = np.maximum(self.s1_max, x_subset)
-            
-            min_val = self.s1_min
-            max_val = self.s1_max
+        if stats['min'] is None:
+            stats['min'] = x_sub.copy()
+            stats['max'] = x_sub.copy()
         else:
-            if self.s2_min is None:
-                self.s2_min = x_subset.copy()
-                self.s2_max = x_subset.copy()
-            else:
-                self.s2_min = np.minimum(self.s2_min, x_subset)
-                self.s2_max = np.maximum(self.s2_max, x_subset)
-            
-            min_val = self.s2_min
-            max_val = self.s2_max
+            if len(x_raw) == len(stats['min']):
+                stats['min'] = np.minimum(stats['min'], x_sub)
+                stats['max'] = np.maximum(stats['max'], x_sub)
         
-        # Min-Max 归一化到 [0, 1]
-        range_val = max_val - min_val
-        range_val[range_val == 0] = 1.0  # 避免除零
-        x_normalized = (x_subset - min_val) / range_val
+        denom = stats['max'] - stats['min']
+        denom[denom < 1e-9] = 1.0
         
-        return x_normalized
+        if len(x_raw) != len(stats['min']):
+             return np.clip(x_raw, 0.0, 1.0)
 
-    def __str__(self) -> str:
-        return (f"OLD3SClassifier(s1_dim={self.d1}, s2_dim={self.d2}, "
-                f"latent_dim={self.latent_dim}, overlap={self.B}, switch={self.T1})")
+        x_norm = (x_sub - stats['min']) / denom
+        return np.clip(x_norm, 0.0, 1.0)
 
-    def train(self, instance: Instance) -> None:
-        """Train the classifier on a single instance."""
-        # Validate features on first instance
-        self._validate_instance_features(instance)
+    def _detect_stage(self, indices):
+        """Reactive State Machine for Feature Evolution."""
+        indices_set = set(indices)
         
-        self.instance_count += 1
-        t = self.instance_count
-        
-        # Extract features
-        x_full = np.array(instance.x, dtype=np.float32)
-        
-        # Check for NaN or Inf
-        if not np.isfinite(x_full).all():
-            raise ValueError(f"Instance {t} contains NaN or Inf values")
-        
-        # ✅ 归一化到 [0, 1]
-        x_s1_normalized = self._normalize_to_01(x_full, self.s1_indices, is_s1=True)
-        x_s2_normalized = self._normalize_to_01(x_full, self.s2_indices, is_s1=False)
-        
-        x_s1 = torch.tensor(x_s1_normalized, dtype=torch.float32).unsqueeze(0).to(self.device)
-        x_s2 = torch.tensor(x_s2_normalized, dtype=torch.float32).unsqueeze(0).to(self.device)
-        
-        # Get true label
-        y = torch.tensor([instance.y_index], dtype=torch.long).to(self.device)
-        
-        # ============ Stage 1: Only S1 available ============
-        if t <= self.overlap_start:
-            self._train_vae_and_classifier(
-                self.vae_s1, self.classifier_s1, x_s1, y,
-                self.optimizer_vae_s1, self.optimizer_clf_s1,
-                self.alpha_s1
-            )
-        
-        # ============ Overlap period: Both S1 and S2 ============
-        elif t <= self.T1:
-            # Train S1 VAE and classifier
-            self._train_vae_and_classifier(
-                self.vae_s1, self.classifier_s1, x_s1, y,
-                self.optimizer_vae_s1, self.optimizer_clf_s1,
-                self.alpha_s1
-            )
-            
-            # Train S2 VAE with alignment to S1
-            with torch.no_grad():
-                z_s1, _, mu_s1, logvar_s1 = self.vae_s1(x_s1)
-            
-            z_s2, x_s2_recon, mu_s2, logvar_s2 = self.vae_s2(x_s2)
-            
-            # VAE loss: reconstruction + KL divergence + alignment
-            vae_loss_s2 = self._vae_loss(x_s2_recon, x_s2, mu_s2, logvar_s2)
-            alignment_loss = F.smooth_l1_loss(z_s2, z_s1.detach())
-            total_loss_s2 = vae_loss_s2 + alignment_loss
-            
-            self.optimizer_vae_s2.zero_grad()
-            total_loss_s2.backward()
-            self.optimizer_vae_s2.step()
-        
-        # ============ Stage 2: Only S2 available ============
-        else:
-            # 1. Train VAE first (independent forward pass)
-            z_s2_vae, x_s2_recon, mu_s2, logvar_s2 = self.vae_s2(x_s2)
-            vae_loss_s2 = self._vae_loss(x_s2_recon, x_s2, mu_s2, logvar_s2)
-            self.optimizer_vae_s2.zero_grad()
-            vae_loss_s2.backward()
-            self.optimizer_vae_s2.step()
-            
-            # 2. Get latent representation for classifiers (fresh forward pass)
-            with torch.no_grad():
-                z_s2, _, _, _ = self.vae_s2(x_s2)
-            
-            # 3. Train both classifiers
-            loss_s1 = self._train_classifier_hbp(
-                self.classifier_s1, z_s2.detach(), y,
-                self.optimizer_clf_s1, self.alpha_s1
-            )
-            
-            loss_s2 = self._train_classifier_hbp(
-                self.classifier_s2, z_s2, y,
-                self.optimizer_clf_s2, self.alpha_s2
-            )
-            
-            # 4. Update ensemble weights
-            self.cumulative_loss_s1.append(loss_s1.item())
-            self.cumulative_loss_s2.append(loss_s2.item())
-            
-            if len(self.cumulative_loss_s1) > 100:
-                self.cumulative_loss_s1.pop(0)
-                self.cumulative_loss_s2.pop(0)
-            
-            self._update_ensemble_weights()
+        if self.model_curr is None:
+            self.curr_indices = indices
+            self.model_curr = self._create_model_bundle(len(indices))
+            self.stats_curr = {'min': None, 'max': None}
+            return "STABLE"
 
-    def predict(self, instance: Instance) -> int:
-        """Make a prediction on an instance."""
-        x_full = np.array(instance.x, dtype=np.float32)
+        curr_set = set(self.curr_indices)
         
-        # Check for NaN or Inf
-        if not np.isfinite(x_full).all():
-            raise ValueError("Instance contains NaN or Inf values")
-        
-        # Check feature dimensions
-        if max(self.s1_indices.max(), self.s2_indices.max()) >= len(x_full):
-            raise ValueError(
-                f"Instance has {len(x_full)} features, but indices require "
-                f"at least {max(self.s1_indices.max(), self.s2_indices.max()) + 1}"
-            )
-        
-        t = self.instance_count + 1
-        
-        with torch.no_grad():
-            # Stage 1: Use S1 only
-            if t <= self.T1:
-                x_s1_normalized = self._normalize_to_01(x_full, self.s1_indices, is_s1=True)
-                x_s1 = torch.tensor(x_s1_normalized, dtype=torch.float32).unsqueeze(0).to(self.device)
-                z_s1, _, _, _ = self.vae_s1(x_s1)
-                pred = self._hbp_predict(self.classifier_s1, z_s1, self.alpha_s1)
-            
-            # Stage 2: Ensemble S1 and S2
-            else:
-                x_s2_normalized = self._normalize_to_01(x_full, self.s2_indices, is_s1=False)
-                x_s2 = torch.tensor(x_s2_normalized, dtype=torch.float32).unsqueeze(0).to(self.device)
-                z_s2, _, _, _ = self.vae_s2(x_s2)
+        # Check for Overlap (Superset)
+        if indices_set > curr_set:
+            if not self.is_overlap:
+                # Transition to Overlap
+                self.model_prev = self.model_curr 
+                self.prev_indices = self.curr_indices
+                self.stats_prev = self.stats_curr
                 
-                pred_s1 = self._hbp_predict(self.classifier_s1, z_s2, self.alpha_s1)
-                pred_s2 = self._hbp_predict(self.classifier_s2, z_s2, self.alpha_s2)
+                # Identify S2 (New features)
+                s2_idx_list = sorted(list(indices_set - curr_set))
+                if not s2_idx_list: s2_idx_list = indices 
                 
-                # Weighted ensemble
-                pred = (self.ensemble_weight_s1 * pred_s1 + 
-                       self.ensemble_weight_s2 * pred_s2)
+                self.curr_indices = np.array(s2_idx_list)
+                self.model_curr = self._create_model_bundle(len(self.curr_indices))
+                self.stats_curr = {'min': None, 'max': None} 
+                
+                self.is_overlap = True
+                self.w_prev = 0.5
+                self.w_curr = 0.5
+                
+            return "OVERLAP"
+
+        # Check for Shift to New Stable (Subset of Overlap, Disjoint from Old)
+        if self.is_overlap and len(indices) < (len(self.prev_indices) + len(self.curr_indices)):
+             self.is_overlap = False
+             self.model_prev = None 
+             return "STABLE_NEW"
+             
+        return "STABLE"
+
+    def train(self, instance: Instance):
+        self.t += 1
+        x_full = np.array(instance.x, dtype=np.float32)
+        x_full = np.nan_to_num(x_full, nan=0.0)
+        y = torch.tensor([instance.y_index], dtype=torch.long, device=self.device)
         
-        return int(torch.argmax(pred, dim=1).item())
+        indices = getattr(instance, 'feature_indices', np.arange(len(x_full)))
+        
+        # 1. Detect Stage
+        stage = self._detect_stage(indices)
+        
+        # 2. Prepare Data Helper
+        def get_sub_tensor(model_indices, stats):
+            global_to_local = {idx: i for i, idx in enumerate(indices)}
+            local_indices = []
+            for idx in model_indices:
+                if idx in global_to_local:
+                    local_indices.append(global_to_local[idx])
+            
+            if not local_indices: return None
+            x_sub = x_full[local_indices]
+            x_norm = self._normalize(x_sub, list(range(len(x_sub))), stats)
+            return torch.tensor(x_norm, dtype=torch.float32).unsqueeze(0).to(self.device)
+
+        # 3. Execution
+        if stage == "STABLE":
+            x_in = get_sub_tensor(self.curr_indices, self.stats_curr)
+            if x_in is not None:
+                self._train_bundle(self.model_curr, x_in, y)
+                
+        elif stage == "STABLE_NEW":
+            x_in = get_sub_tensor(self.curr_indices, self.stats_curr)
+            if x_in is not None:
+                self._train_bundle(self.model_curr, x_in, y)
+            if self.model_prev is not None and x_in is not None:
+                 self._update_ensemble_logic(x_in, y)
+
+        elif stage == "OVERLAP":
+            x_prev = get_sub_tensor(self.prev_indices, self.stats_prev)
+            if x_prev is not None:
+                self._train_bundle(self.model_prev, x_prev, y)
+            
+            x_curr = get_sub_tensor(self.curr_indices, self.stats_curr)
+            if x_curr is not None and x_prev is not None:
+                # Alignment
+                with torch.no_grad():
+                    z_prev, _, _, _ = self.model_prev['vae'](x_prev)
+                
+                # Custom Train with Alignment
+                z_curr, recon, mu, logvar = self.model_curr['vae'](x_curr)
+                rec_loss = F.binary_cross_entropy(recon, x_curr, reduction='sum')
+                kld_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+                align_loss = F.mse_loss(z_curr, z_prev.detach())
+                
+                total_loss = rec_loss + 0.1 * kld_loss + 10.0 * align_loss
+                
+                self.model_curr['opt_vae'].zero_grad()
+                total_loss.backward()
+                self.model_curr['opt_vae'].step()
+                
+                self._train_clf_only(self.model_curr, z_curr.detach(), y)
+                self._update_ensemble_logic(x_curr, y)
 
     def predict_proba(self, instance: Instance) -> np.ndarray:
-        """Predict class probabilities."""
         x_full = np.array(instance.x, dtype=np.float32)
+        indices = getattr(instance, 'feature_indices', np.arange(len(x_full)))
         
-        # Check for NaN or Inf
-        if not np.isfinite(x_full).all():
-            raise ValueError("Instance contains NaN or Inf values")
-        
-        # Check feature dimensions
-        if max(self.s1_indices.max(), self.s2_indices.max()) >= len(x_full):
-            raise ValueError(
-                f"Instance has {len(x_full)} features, but indices require "
-                f"at least {max(self.s1_indices.max(), self.s2_indices.max()) + 1}"
-            )
-        
-        t = self.instance_count + 1
-        
-        with torch.no_grad():
-            if t <= self.T1:
-                x_s1_normalized = self._normalize_to_01(x_full, self.s1_indices, is_s1=True)
-                x_s1 = torch.tensor(x_s1_normalized, dtype=torch.float32).unsqueeze(0).to(self.device)
-                z_s1, _, _, _ = self.vae_s1(x_s1)
-                pred = self._hbp_predict(self.classifier_s1, z_s1, self.alpha_s1)
-            else:
-                x_s2_normalized = self._normalize_to_01(x_full, self.s2_indices, is_s1=False)
-                x_s2 = torch.tensor(x_s2_normalized, dtype=torch.float32).unsqueeze(0).to(self.device)
-                z_s2, _, _, _ = self.vae_s2(x_s2)
-                
-                pred_s1 = self._hbp_predict(self.classifier_s1, z_s2, self.alpha_s1)
-                pred_s2 = self._hbp_predict(self.classifier_s2, z_s2, self.alpha_s2)
-                
-                pred = (self.ensemble_weight_s1 * pred_s1 + 
-                       self.ensemble_weight_s2 * pred_s2)
-        
-        probs = F.softmax(pred, dim=1).squeeze(0).cpu().numpy()
-        return probs
+        if self.model_curr is None:
+            return np.ones(self.num_classes) / self.num_classes
 
-    # ============ Helper Methods ============
-    
-    def _vae_loss(
-        self, 
-        x_recon: torch.Tensor, 
-        x: torch.Tensor, 
-        mu: torch.Tensor, 
-        logvar: torch.Tensor
-    ) -> torch.Tensor:
-        """Compute VAE loss: BCE + KL divergence (符合原论文)."""
-        bce_loss = F.binary_cross_entropy(x_recon, x, reduction='sum')
-        kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
-        return bce_loss + kl_loss
-    
-    def _train_vae_and_classifier(
-        self, 
-        vae: VAE_Shallow, 
-        classifier: HBPMLP, 
-        x: torch.Tensor, 
-        y: torch.Tensor,
-        optimizer_vae: torch.optim.Optimizer, 
-        optimizer_clf: torch.optim.Optimizer, 
-        alpha: torch.Tensor
-    ) -> None:
-        """Train VAE and classifier together."""
-        # Forward VAE
-        z, x_recon, mu, logvar = vae(x)
+        global_to_local = {idx: i for i, idx in enumerate(indices)}
+        local_indices = [global_to_local[idx] for idx in self.curr_indices if idx in global_to_local]
         
-        # VAE loss
-        vae_loss = self._vae_loss(x_recon, x, mu, logvar)
-        optimizer_vae.zero_grad()
-        vae_loss.backward()
-        optimizer_vae.step()
+        if not local_indices: return np.ones(self.num_classes) / self.num_classes
         
-        # Classifier loss with HBP
+        x_sub = x_full[local_indices]
+        x_tensor = torch.tensor(x_sub, dtype=torch.float32).unsqueeze(0).to(self.device)
+        
         with torch.no_grad():
-            z, _, _, _ = vae(x)
-        
-        self._train_classifier_hbp(classifier, z, y, optimizer_clf, alpha)
-    
-    def _train_classifier_hbp(
-        self, 
-        classifier: HBPMLP, 
-        z: torch.Tensor, 
-        y: torch.Tensor, 
-        optimizer: torch.optim.Optimizer, 
-        alpha: torch.Tensor
-    ) -> torch.Tensor:
-        """Train classifier using Hedge Backpropagation."""
-        predictions = classifier(z)
-        
-        # Compute loss for each layer
-        losses = []
-        for pred in predictions:
-            loss = F.cross_entropy(pred, y)
-            losses.append(loss)
-        
-        # Weighted loss based on hedge weights
-        weighted_loss = sum(alpha[i] * losses[i] for i in range(len(losses)))
-        
-        optimizer.zero_grad()
-        weighted_loss.backward()
-        optimizer.step()
-        
-        # Update hedge weights
-        with torch.no_grad():
-            for i in range(len(losses)):
-                alpha[i] *= torch.pow(torch.tensor(self.beta, device=self.device), losses[i])
-            alpha[:] = alpha / alpha.sum()
-        
-        return weighted_loss
-    
-    def _hbp_predict(
-        self, 
-        classifier: HBPMLP, 
-        z: torch.Tensor, 
-        alpha: torch.Tensor
-    ) -> torch.Tensor:
-        """Make prediction using HBP ensemble."""
-        predictions = classifier(z)
-        weighted_pred = sum(alpha[i] * predictions[i] for i in range(len(predictions)))
-        return weighted_pred
-    
-    def _update_ensemble_weights(self) -> None:
-            """Update ensemble weights using exponential weights."""
-            if len(self.cumulative_loss_s1) > 0:
-                sum_loss_s1 = sum(self.cumulative_loss_s1)
-                sum_loss_s2 = sum(self.cumulative_loss_s2)
+            z_curr, _, _, _ = self.model_curr['vae'](x_tensor)
+            logits_curr = self._predict_hbp(self.model_curr, z_curr)
+            
+            logits_final = logits_curr
+            
+            if self.model_prev is not None:
+                logits_prev = self._predict_hbp(self.model_prev, z_curr)
+                logits_final = self.w_curr * logits_curr + self.w_prev * logits_prev
                 
-                try:
-                    exp_s1 = np.exp(self.eta * sum_loss_s1)
-                    exp_s2 = np.exp(self.eta * sum_loss_s2)
-                    
-                    total = exp_s1 + exp_s2
-                    self.ensemble_weight_s1 = exp_s1 / total
-                    self.ensemble_weight_s2 = exp_s2 / total
-                except OverflowError:
-                    # Keep current weights if overflow
-                    pass
+        return F.softmax(logits_final, dim=1).cpu().numpy()[0]
+        
+    def predict(self, instance: Instance) -> int:
+        return np.argmax(self.predict_proba(instance))
+
+    def _train_bundle(self, bundle, x, y):
+        z, recon, mu, logvar = bundle['vae'](x)
+        loss = F.binary_cross_entropy(recon, x, reduction='sum') - 0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        bundle['opt_vae'].zero_grad()
+        loss.backward()
+        bundle['opt_vae'].step()
+        self._train_clf_only(bundle, z.detach(), y)
+
+    def _train_clf_only(self, bundle, z, y):
+        preds = bundle['clf'](z)
+        losses = [F.cross_entropy(p, y) for p in preds]
+        w_loss = sum(w * l for w, l in zip(bundle['hbp_weights'], losses))
+        bundle['opt_clf'].zero_grad()
+        w_loss.backward()
+        bundle['opt_clf'].step()
+        with torch.no_grad():
+            decay = torch.tensor(self.beta, device=self.device)
+            for i, l in enumerate(losses):
+                bundle['hbp_weights'][i] *= torch.pow(decay, l)
+            bundle['hbp_weights'] /= bundle['hbp_weights'].sum()
+
+    def _predict_hbp(self, bundle, z):
+        preds = bundle['clf'](z)
+        return sum(w * p for w, p in zip(bundle['hbp_weights'], preds))
+
+    def _update_ensemble_logic(self, x_curr, y):
+        with torch.no_grad():
+            z, _, _, _ = self.model_curr['vae'](x_curr)
+            l_c = F.cross_entropy(self._predict_hbp(self.model_curr, z), y).item()
+            l_p = F.cross_entropy(self._predict_hbp(self.model_prev, z), y).item()
+        self.loss_hist_curr.append(l_c)
+        self.loss_hist_prev.append(l_p)
+        
+        avg_c = np.mean(self.loss_hist_curr)
+        avg_p = np.mean(self.loss_hist_prev)
+        
+        w_c = np.exp(-self.eta * avg_c)
+        w_p = np.exp(-self.eta * avg_p)
+        total = w_c + w_p + 1e-9
+        self.w_curr = w_c / total
+        self.w_prev = w_p / total
