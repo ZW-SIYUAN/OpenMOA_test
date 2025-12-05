@@ -1,19 +1,19 @@
-from capymoa.evaluation import AnomalyDetectionEvaluator
-from capymoa.anomaly import (
+from openmoa.evaluation import AnomalyDetectionEvaluator
+from openmoa.anomaly import (
     HalfSpaceTrees,
     OnlineIsolationForest,
     Autoencoder,
     StreamRHF,
 )
-from capymoa.base import AnomalyDetector
-from capymoa.base import MOAClassifier
-from capymoa.datasets import ElectricityTiny
+from openmoa.base import AnomalyDetector
+from openmoa.base import MOAClassifier
+from openmoa.datasets import ElectricityTiny
 import pytest
 from functools import partial
 from typing import Callable, Optional
-from capymoa.base import _extract_moa_learner_CLI
+from openmoa.base import _extract_moa_learner_CLI
 
-from capymoa.stream._stream import Schema
+from openmoa.stream._stream import Schema
 
 
 @pytest.mark.parametrize(

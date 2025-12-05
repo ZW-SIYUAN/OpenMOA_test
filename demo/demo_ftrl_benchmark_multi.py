@@ -27,9 +27,9 @@ sys.path.insert(0, os.path.abspath('./src'))
 
 try:
     # [CHANGE] Import FTRL
-    from capymoa.classifier._ftrl_classifier import FTRLClassifier
-    from capymoa.stream.stream_wrapper import OpenFeatureStream, ShuffledStream
-    import capymoa.datasets
+    from openmoa.classifier._ftrl_classifier import FTRLClassifier
+    from openmoa.stream.stream_wrapper import OpenFeatureStream, ShuffledStream
+    import openmoa.datasets
 except ImportError as e:
     print(f"❌ Import Error: {e}")
     sys.exit(1)
@@ -45,7 +45,7 @@ TIME_SERIES_DATASETS = ["Covertype", "Covtype", "Electricity"]
 
 def get_datasets():
     """Select the Multi-class datasets."""
-    # Format: (Display Name, Class Name in capymoa.datasets)
+    # Format: (Display Name, Class Name in openmoa.datasets)
     target_list = [
         ("DryBean", "DryBean"),
         ("Optdigits", "Optdigits"),
@@ -56,10 +56,10 @@ def get_datasets():
     ]
     available = []
     for d_name, c_name in target_list:
-        if hasattr(capymoa.datasets, c_name):
-            available.append((d_name, getattr(capymoa.datasets, c_name)))
+        if hasattr(openmoa.datasets, c_name):
+            available.append((d_name, getattr(openmoa.datasets, c_name)))
         else:
-            print(f"⚠️  Dataset '{c_name}' not found in capymoa.datasets, skipping.")
+            print(f"⚠️  Dataset '{c_name}' not found in openmoa.datasets, skipping.")
     return available
 
 def get_stream_length(base_stream, default=10000):

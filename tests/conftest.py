@@ -4,8 +4,8 @@
 """
 
 import os
-from capymoa.datasets._source_list import SOURCE_LIST
-from capymoa.datasets._utils import (
+from openmoa.datasets._source_list import SOURCE_LIST
+from openmoa.datasets._utils import (
     get_download_dir,
     download_extract,
     is_already_downloaded,

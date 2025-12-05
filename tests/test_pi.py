@@ -1,10 +1,10 @@
-from capymoa.evaluation import (
+from openmoa.evaluation import (
     PredictionIntervalEvaluator,
     PredictionIntervalWindowedEvaluator,
 )
-from capymoa.datasets import Fried
-from capymoa.base import PredictionIntervalLearner
-from capymoa.prediction_interval import (
+from openmoa.datasets import Fried
+from openmoa.base import PredictionIntervalLearner
+from openmoa.prediction_interval import (
     MVE,
     AdaPI,
 )

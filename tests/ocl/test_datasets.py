@@ -1,6 +1,6 @@
 from typing import Type
-from capymoa.ocl import datasets
-from capymoa.stream import Stream
+from openmoa.ocl import datasets
+from openmoa.stream import Stream
 import numpy as np
 import pytest
 import inspect

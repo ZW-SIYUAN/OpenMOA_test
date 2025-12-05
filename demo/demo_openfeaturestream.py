@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from typing import Optional, Literal, List
 
 # ==========================================
-# 1. 模拟 CapyMOA 基础环境 (无需安装库)
+# 1. 模拟 OpenMOA 基础环境 (无需安装库)
 # ==========================================
 class Schema:
     def __init__(self, d): self.d = d

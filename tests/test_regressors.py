@@ -1,9 +1,9 @@
 from contextlib import nullcontext
 import os
-from capymoa.evaluation import RegressionEvaluator, RegressionWindowedEvaluator
-from capymoa.datasets import Fried
-from capymoa.misc import load_model, save_model
-from capymoa.regressor import (
+from openmoa.evaluation import RegressionEvaluator, RegressionWindowedEvaluator
+from openmoa.datasets import Fried
+from openmoa.misc import load_model, save_model
+from openmoa.regressor import (
     KNNRegressor,
     AdaptiveRandomForestRegressor,
     FIMTDD,
@@ -19,8 +19,8 @@ from jpype import JException
 import pytest
 from functools import partial
 
-from capymoa.base import Regressor
-from capymoa.stream import Schema, Stream
+from openmoa.base import Regressor
+from openmoa.stream import Schema, Stream
 from tempfile import TemporaryDirectory
 
 from pytest_subtests import SubTests

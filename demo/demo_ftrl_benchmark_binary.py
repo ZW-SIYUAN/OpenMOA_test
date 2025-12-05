@@ -27,9 +27,9 @@ sys.path.insert(0, os.path.abspath('./src'))
 
 try:
     # [CHANGE] Import FTRL instead of FOBOS
-    from capymoa.classifier._ftrl_classifier import FTRLClassifier
-    from capymoa.stream.stream_wrapper import OpenFeatureStream, ShuffledStream
-    import capymoa.datasets
+    from openmoa.classifier._ftrl_classifier import FTRLClassifier
+    from openmoa.stream.stream_wrapper import OpenFeatureStream, ShuffledStream
+    import openmoa.datasets
 except ImportError as e:
     print(f"❌ Import Error: {e}")
     print("Please ensure 'src/stream_wrapper.py' contains 'ShuffledStream' class.")
@@ -60,10 +60,10 @@ def get_datasets():
     ]
     available = []
     for d_name, c_name in target_list:
-        if hasattr(capymoa.datasets, c_name):
-            available.append((d_name, getattr(capymoa.datasets, c_name)))
+        if hasattr(openmoa.datasets, c_name):
+            available.append((d_name, getattr(openmoa.datasets, c_name)))
         else:
-            print(f"⚠️  Dataset '{d_name}' not found in capymoa.datasets, skipping.")
+            print(f"⚠️  Dataset '{d_name}' not found in openmoa.datasets, skipping.")
     return available
 
 def get_stream_length(base_stream, default=10000):

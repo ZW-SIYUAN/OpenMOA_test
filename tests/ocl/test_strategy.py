@@ -4,13 +4,13 @@ from typing import Callable, List
 
 import pytest
 
-from capymoa.ann import Perceptron
-from capymoa.base import Classifier
-from capymoa.classifier import Finetune, HoeffdingTree
-from capymoa.ocl.datasets import TinySplitMNIST
-from capymoa.ocl.evaluation import ocl_train_eval_loop
-from capymoa.ocl.strategy import ExperienceReplay, SLDA, NCM
-from capymoa.stream import Schema
+from openmoa.ann import Perceptron
+from openmoa.base import Classifier
+from openmoa.classifier import Finetune, HoeffdingTree
+from openmoa.ocl.datasets import TinySplitMNIST
+from openmoa.ocl.evaluation import ocl_train_eval_loop
+from openmoa.ocl.strategy import ExperienceReplay, SLDA, NCM
+from openmoa.stream import Schema
 
 import torch
 from torch import nn

@@ -26,8 +26,8 @@ Once built, you can visit the documentation locally in your browser.
 Docstrings
 ----------
 
-CapyMOA uses Sphinx to generate documentation from function, class, and module
-docstring comments. CapyMOA uses the `sphinx/reStructuredText
+OpenMOA uses Sphinx to generate documentation from function, class, and module
+docstring comments. OpenMOA uses the `sphinx/reStructuredText
 <https://sphinx-rtd-tutorial.readthedocs.io/en/latest/docstrings.html>`_ style of
 docstrings. Rather than having type information in the docstring, we prefer to
 use Python-type hints. This allows for better type checking and IDE support.
@@ -86,7 +86,7 @@ Here is an example of a function docstring:
 Notebooks
 ---------
 
-CapyMOA documentation includes Jupyter Notebooks for tutorials, and narrative
+OpenMOA documentation includes Jupyter Notebooks for tutorials, and narrative
 style documentation. These notebooks are run as tests to ensure they are kept
 up-to-date. This document explains how to run, render and test notebooks.
 
@@ -125,7 +125,7 @@ Some notebooks may take a long time to run. Heres how we handle slow notebooks:
 
     ..  code-block:: python
 
-        # This cell is hidden on capymoa.org. See docs/contributing/docs.rst
+        # This cell is hidden on openmoa.org. See docs/contributing/docs.rst
         from util.nbmock import mock_datasets, is_nb_fast
         if is_nb_fast():
             mock_datasets()

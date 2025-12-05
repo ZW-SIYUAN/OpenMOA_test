@@ -1,31 +1,26 @@
-#CapyMOA 项目的 核心配置文件 ，负责管理项目的元数据、依赖、构建规则及开发工具配置。以下是其关键部分的作用说明：
-
+# OpenMOA 项目的 核心配置文件
 
 [build-system]
 # wget is used to download the MOA jar file
 # stubgenj is used to generate the Python stub files for the MOA classes
 requires = ["hatchling", "hatch-build-scripts", "wget", "stubgenj", "invoke"]
 # Build system: https://hatch.pypa.io
-# The main reason I chose hatch is its support for plugins allowing us to
-# download the MOA jar file before the build starts.
 build-backend = "hatchling.build"
 
 [project]
-name = "capymoa"
+name = "openmoa"
 dynamic = ['version']
-description = "Python wrapper for MOA to allow efficient use of existing algorithms with a more modern API."
+description = "OpenMOA: Efficient Machine Learning for Data Streams in Python (Fork of OpenMOA)."
 readme = "README.md"
 license = "BSD-3-Clause"
 license-files = ["LICENSE"]
-homepage = "https://capymoa.org"
-repository = "https://github.com/adaptive-machine-learning/CapyMOA"
+homepage = "https://openmoa.net"
+repository = "https://github.com/ZW-SIYUAN/OpenMOA"
 authors = [
+    {name="Zhili Wang"},
+    {name="Yi He"},
     {name="Heitor Murilo Gomes", email="hmugomes@gmail.com"},
-    {name="Anton Lee", email="anton.lee@vuw.ac.nz"},
-    {name="Nuwan Gunasekara"},
-    {name="Marco Heyden"},
-    {name="Yibin Sun"},
-    {name="Guilherme Weigert Cassales"}
+    {name="Anton Lee", email="anton.lee@vuw.ac.nz"}
 ]
 keywords = [
     "MOA",
@@ -45,9 +40,7 @@ keywords = [
 
 long_description_content_type = "text/markdown"
 requires-python = ">=3.9"
-# Defines the pip packages that are required by this package. These should be
-# as permissive as possible, since capymoa should collaborate with other
-# packages.
+# Defines the pip packages that are required by this package.
 dependencies = [
     "jpype1>=v1.5.1",
     "wget",
@@ -95,8 +88,8 @@ doc=[
 ]
 
 [project.urls]
-Documentation = "https://capymoa.org"
-Source = "https://github.com/adaptive-machine-learning/CapyMOA"
+Documentation = "https://openmoa.net"
+Source = "https://github.com/ZW-SIYUAN/OpenMOA"
 
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]
@@ -108,11 +101,13 @@ norecursedirs = [
 
 [tool.hatch]
 [tool.hatch.version]
-path = "src/capymoa/__about__.py"
+path = "src/openmoa/__about__.py"
+
 [tool.hatch.build.targets.wheel]
 # Defines the directories included in the wheel package
-packages = ["src/capymoa", "src/moa-stubs", "src/com-stubs"]
-artifacts = ["src/capymoa/jar/moa.jar", "src/capymoa/jar/Home.class"]
+# 注意：这里必须改为 openmoa
+packages = ["src/openmoa", "src/moa-stubs", "src/com-stubs"]
+artifacts = ["src/openmoa/jar/moa.jar", "src/openmoa/jar/Home.class"]
 
 # src/moa-stubs and src/com-stubs are included in the git ignore file
 # that hatch inherits. To include them anyway we need to set ignore-vcs to true.
@@ -120,11 +115,10 @@ ignore-vcs = true
 
 [tool.hatch.build.targets.sdist]
 # Defines the directories included in the source distribution package (sdist).
-packages = ["src/capymoa", "src/moa-stubs", "src/com-stubs"]
-artifacts = ["src/capymoa/jar/moa.jar", "src/capymoa/jar/Home.class"]
+# 注意：这里必须改为 openmoa
+packages = ["src/openmoa", "src/moa-stubs", "src/com-stubs"]
+artifacts = ["src/openmoa/jar/moa.jar", "src/openmoa/jar/Home.class"]
 
-# src/moa-stubs and src/com-stubs are included in the git ignore file
-# that hatch inherits. To include them anyway we need to set ignore-vcs to true.
 ignore-vcs = true
 
 [[tool.hatch.build.hooks.build-scripts.scripts]]
@@ -145,9 +139,10 @@ allow_zero_version = true
 tag_format = "v{version}"
 
 # Find and replace version variables in the following files
+# 注意：这里路径也更新了
 version_variables = [
-    "src/capymoa/__about__.py:__version__",
-    "docker/.env:CAPYMOA_VERSION"
+    "src/openmoa/__about__.py:__version__",
+    "docker/.env:OPENMOA_VERSION"
 ]
 
 [tool.semantic_release.branches.main]

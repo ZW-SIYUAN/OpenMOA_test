@@ -17,7 +17,7 @@ import os
 sys.path.insert(0, os.path.abspath('./src'))
 
 # Import modules to test
-from capymoa._sparse_utils import (
+from openmoa._sparse_utils import (
     SparseConfig,
     calculate_sparsity,
     should_use_sparse,
@@ -147,7 +147,7 @@ class TestJavaInstanceCreation(unittest.TestCase):
     
     def setUp(self):
         """Create shared schemas for tests."""
-        from capymoa.stream import Schema
+        from openmoa.stream import Schema
         
         # Small schema for dense tests (3 features)
         self.schema_small = Schema.from_custom(

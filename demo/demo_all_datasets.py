@@ -7,14 +7,14 @@ sys.path.insert(0, os.path.abspath('./src'))
 
 try:
     # 尝试导入本地包
-    import capymoa.datasets as datasets
-    from capymoa.stream import MOAStream
+    import openmoa.datasets as datasets
+    from openmoa.stream import MOAStream
     
     print(f"✅ Successfully loaded local package from: {os.path.dirname(datasets.__file__)}")
     
 except ImportError as e:
     print(f"❌ Import Error: {e}")
-    print("请检查项目根目录下是否存在 'src/capymoa' 文件夹。")
+    print("请检查项目根目录下是否存在 'src/openmoa' 文件夹。")
     sys.exit(1)
 
 def check_list(title, dataset_list, is_binary_group=True):

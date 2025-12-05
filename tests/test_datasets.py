@@ -1,22 +1,22 @@
 from typing import Sized, Type
-import capymoa.datasets as capymoa_datasets
-from capymoa.datasets import ElectricityTiny
+import openmoa.datasets as openmoa_datasets
+from openmoa.datasets import ElectricityTiny
 from tempfile import TemporaryDirectory
 import pytest
 import numpy as np
 import platform
-from capymoa.datasets.downloader import DownloadableDataset
-from capymoa.stream import stream_from_file
+from openmoa.datasets.downloader import DownloadableDataset
+from openmoa.stream import stream_from_file
 from subprocess import run
 import inspect
 
 _ALL_DOWNLOADABLE_DATASET = [
     cls
-    for _, cls in inspect.getmembers(capymoa_datasets)
+    for _, cls in inspect.getmembers(openmoa_datasets)
     if inspect.isclass(cls) and issubclass(cls, DownloadableDataset)
 ]
 """Automatically collect all datasets that are instances of DownloadableDataset
-from the capymoa_datasets module.
+from the openmoa_datasets module.
 """
 
 
@@ -54,7 +54,7 @@ def test_downloader_cli():
         cmd = [
             "python",
             "-m",
-            "capymoa.datasets",
+            "openmoa.datasets",
             "--out",
             tmp_dir,
             "--dataset",

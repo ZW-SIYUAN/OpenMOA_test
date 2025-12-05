@@ -26,9 +26,9 @@ sns.set_theme(style="whitegrid")
 sys.path.insert(0, os.path.abspath('./src'))
 
 try:
-    from capymoa.classifier._fobos_classifier import FOBOSClassifier
-    from capymoa.stream.stream_wrapper import OpenFeatureStream, ShuffledStream
-    import capymoa.datasets
+    from openmoa.classifier._fobos_classifier import FOBOSClassifier
+    from openmoa.stream.stream_wrapper import OpenFeatureStream, ShuffledStream
+    import openmoa.datasets
 except ImportError as e:
     print(f"❌ Import Error: {e}")
     print("Please ensure 'src/stream_wrapper.py' contains 'ShuffledStream' class.")
@@ -54,12 +54,12 @@ def get_datasets():
     ]
     available = []
     for d_name, c_name in target_list:
-        if hasattr(capymoa.datasets, c_name):
-            available.append((d_name, getattr(capymoa.datasets, c_name)))
+        if hasattr(openmoa.datasets, c_name):
+            available.append((d_name, getattr(openmoa.datasets, c_name)))
         else:
             # Fallback for naming variations
-            if c_name == "Covertype" and hasattr(capymoa.datasets, "Covtype"):
-                available.append((d_name, getattr(capymoa.datasets, "Covtype")))
+            if c_name == "Covertype" and hasattr(openmoa.datasets, "Covtype"):
+                available.append((d_name, getattr(openmoa.datasets, "Covtype")))
             else:
                 print(f"⚠️  Dataset '{d_name}' not found, skipping.")
     return available

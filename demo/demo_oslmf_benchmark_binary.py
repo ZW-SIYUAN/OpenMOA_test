@@ -27,9 +27,9 @@ sns.set_theme(style="whitegrid")
 sys.path.insert(0, os.path.abspath('./src'))
 
 try:
-    from capymoa.classifier._oslmf_classifier import OSLMFClassifier
-    from capymoa.stream.stream_wrapper import TrapezoidalStream, CapriciousStream, EvolvableStream, ShuffledStream
-    import capymoa.datasets
+    from openmoa.classifier._oslmf_classifier import OSLMFClassifier
+    from openmoa.stream.stream_wrapper import TrapezoidalStream, CapriciousStream, EvolvableStream, ShuffledStream
+    import openmoa.datasets
 except ImportError as e:
     print(f"❌ Import Error: {e}")
     sys.exit(1)
@@ -58,8 +58,8 @@ def get_datasets():
     ]
     available = []
     for d_name, c_name in target_list:
-        if hasattr(capymoa.datasets, c_name):
-            available.append((d_name, getattr(capymoa.datasets, c_name)))
+        if hasattr(openmoa.datasets, c_name):
+            available.append((d_name, getattr(openmoa.datasets, c_name)))
     return available
 
 def get_stream_length(base_stream, default=10000):

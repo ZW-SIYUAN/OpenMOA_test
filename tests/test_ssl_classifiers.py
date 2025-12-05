@@ -1,10 +1,10 @@
-from capymoa.datasets._datasets import ElectricityTiny, CovtypeTiny
-from capymoa.ssl.classifier import OSNN
+from openmoa.datasets._datasets import ElectricityTiny, CovtypeTiny
+from openmoa.ssl.classifier import OSNN
 
 import pytest
-from capymoa.evaluation.evaluation import prequential_ssl_evaluation
-from capymoa.base import ClassifierSSL
-from capymoa.stream import Stream
+from openmoa.evaluation.evaluation import prequential_ssl_evaluation
+from openmoa.base import ClassifierSSL
+from openmoa.stream import Stream
 from functools import partial
 
 

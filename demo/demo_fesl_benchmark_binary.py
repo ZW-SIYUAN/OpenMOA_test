@@ -28,9 +28,9 @@ sys.path.insert(0, os.path.abspath('./src'))
 
 try:
     # [CHANGE] Import FESL
-    from capymoa.classifier._fesl_classifier import FESLClassifier
-    from capymoa.stream.stream_wrapper import OpenFeatureStream, ShuffledStream
-    import capymoa.datasets
+    from openmoa.classifier._fesl_classifier import FESLClassifier
+    from openmoa.stream.stream_wrapper import OpenFeatureStream, ShuffledStream
+    import openmoa.datasets
 except ImportError as e:
     print(f"❌ Import Error: {e}")
     sys.exit(1)
@@ -63,8 +63,8 @@ def get_datasets():
     ]
     available = []
     for d_name, c_name in target_list:
-        if hasattr(capymoa.datasets, c_name):
-            available.append((d_name, getattr(capymoa.datasets, c_name)))
+        if hasattr(openmoa.datasets, c_name):
+            available.append((d_name, getattr(openmoa.datasets, c_name)))
         else:
             print(f"⚠️  Dataset '{d_name}' not found, skipping.")
     return available

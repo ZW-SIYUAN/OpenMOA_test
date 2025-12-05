@@ -1,21 +1,21 @@
 from contextlib import nullcontext
 from itertools import product
-from capymoa.evaluation.evaluation import (
+from openmoa.evaluation.evaluation import (
     _is_fast_mode_compilable,
     prequential_evaluation_anomaly,
 )
-from capymoa.regressor import KNNRegressor
-from capymoa.stream.generator import SEA, HyperPlaneRegression, RandomTreeGenerator
-from capymoa.classifier import NaiveBayes, HoeffdingTree
-from capymoa.evaluation import (
+from openmoa.regressor import KNNRegressor
+from openmoa.stream.generator import SEA, HyperPlaneRegression, RandomTreeGenerator
+from openmoa.classifier import NaiveBayes, HoeffdingTree
+from openmoa.evaluation import (
     prequential_evaluation,
     prequential_evaluation_multiple_learners,
     prequential_ssl_evaluation,
 )
-from capymoa.datasets import ElectricityTiny
+from openmoa.datasets import ElectricityTiny
 import pytest
-from capymoa.datasets import Electricity
-from capymoa.anomaly import (
+from openmoa.datasets import Electricity
+from openmoa.anomaly import (
     HalfSpaceTrees,
 )
 
