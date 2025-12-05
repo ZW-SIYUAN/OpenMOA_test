@@ -18,8 +18,8 @@ OpenMOA
    :target: https://discord.gg/spd2gQJGAb
    :alt: Link to Discord
 
-.. image:: https://img.shields.io/github/stars/adaptive-machine-learning/OpenMOA?style=flat
-   :target: https://github.com/adaptive-machine-learning/OpenMOA
+.. image:: https://img.shields.io/github/stars/ZW-SIYUAN/OpenMOA?style=flat
+   :target: https://github.com/ZW-SIYUAN/OpenMOA
    :alt: Link to GitHub
 
 Machine learning library tailored for data streams. Featuring a Python API
@@ -52,7 +52,7 @@ refer to the :ref:`installation`. Once installed take a look at the
 
    OpenMOA is still in the early stages of development. The API is subject to
    change until version 1.0.0. If you encounter any issues, please report them
-   on the `GitHub Issues <https://github.com/adaptive-machine-learning/OpenMOA/issues>`_
+   on the `GitHub Issues <https://github.com/ZW-SIYUAN/OpenMOA/issues>`_
    or talk to us on `Discord <https://discord.gg/spd2gQJGAb>`_.
 
 .. image:: /images/arf100_cpu_time.png
@@ -69,7 +69,7 @@ Benchmark comparing OpenMOA against other data stream libraries. The benchmark
 was performed using an ensemble of 100 ARF learners trained on
 :class:`openmoa.datasets.RTG_2abrupt` dataset containing 100,000 samples and 30
 features.  You can find the code to reproduce this benchmark in
-`benchmarking.py <https://github.com/adaptive-machine-learning/OpenMOA/blob/main/notebooks/benchmarking.py>`_.
+`benchmarking.py <https://github.com/ZW-SIYUAN/OpenMOA/blob/main/notebooks/benchmarking.py>`_.
 *OpenMOA has the speed of MOA with the flexibility of Python and the richness of
 Python's data science ecosystem.*
 

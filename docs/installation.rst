@@ -129,9 +129,9 @@ dependencies.
 
    .. code:: bash
 
-      git clone https://github.com/adaptive-machine-learning/OpenMOA.git
+      git clone https://github.com/ZW-SIYUAN/OpenMOA.git
       # or clone via the SSH protocol (often preferred if you use SSH keys for git):
-      #   ``git clone with git@github.com:adaptive-machine-learning/OpenMOA.git``
+      #   ``git clone with git@github.com:ZW-SIYUAN/OpenMOA.git``
       
 
 #. **Install OpenMOA in Editable Mode**

@@ -12,7 +12,7 @@ from docs.util.github_link import make_linkcode_resolve
 
 discord_link = "https://discord.gg/spd2gQJGAb"
 contact_email = "heitor.gomes@vuw.ac.nz"
-openmoa_github = "https://github.com/adaptive-machine-learning/OpenMOA"
+openmoa_github = "https://github.com/ZW-SIYUAN/OpenMOA"
 
 project = "OpenMOA"
 copyright = "2024 OpenMOA Developers"
