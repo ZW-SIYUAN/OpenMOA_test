@@ -234,7 +234,7 @@ def benchmark_classifiers_openmoa(
     raw_results_output_csv,
 ):
     # Run experiment 1
-    result_capyNB, raw_openmoa = openmoa_experiment(
+    result_openNB, raw_openmoa = openmoa_experiment(
         dataset_name=dataset_names,
         learner_name="NaiveBayes",
         stream=data,
@@ -244,14 +244,14 @@ def benchmark_classifiers_openmoa(
     )
 
     intermediary_results = checkpoint_results(
-        intermediary_results, result_capyNB, results_output_csv
+        intermediary_results, result_openNB, results_output_csv
     )
     raw_intermediary_results = checkpoint_results(
         raw_intermediary_results, raw_openmoa, raw_results_output_csv
     )
 
     # Run experiment 2
-    result_capyHT, raw_openmoa = openmoa_experiment(
+    result_openHT, raw_openmoa = openmoa_experiment(
         dataset_name=dataset_names,
         learner_name="HT",
         stream=data,
@@ -261,14 +261,14 @@ def benchmark_classifiers_openmoa(
     )
 
     intermediary_results = checkpoint_results(
-        intermediary_results, result_capyHT, results_output_csv
+        intermediary_results, result_openHT, results_output_csv
     )
     raw_intermediary_results = checkpoint_results(
         raw_intermediary_results, raw_openmoa, raw_results_output_csv
     )
 
     # Run experiment 3
-    result_capyEFDT, raw_openmoa = openmoa_experiment(
+    result_openEFDT, raw_openmoa = openmoa_experiment(
         dataset_name=dataset_names,
         learner_name="EFDT",
         stream=data,
@@ -278,14 +278,14 @@ def benchmark_classifiers_openmoa(
     )
 
     intermediary_results = checkpoint_results(
-        intermediary_results, result_capyEFDT, results_output_csv
+        intermediary_results, result_openEFDT, results_output_csv
     )
     raw_intermediary_results = checkpoint_results(
         raw_intermediary_results, raw_openmoa, raw_results_output_csv
     )
 
     # Run experiment 4
-    result_capyKNN, raw_openmoa = openmoa_experiment(
+    result_openKNN, raw_openmoa = openmoa_experiment(
         dataset_name=dataset_names,
         learner_name="kNN",
         stream=data,
@@ -295,14 +295,14 @@ def benchmark_classifiers_openmoa(
     )
 
     intermediary_results = checkpoint_results(
-        intermediary_results, result_capyKNN, results_output_csv
+        intermediary_results, result_openKNN, results_output_csv
     )
     raw_intermediary_results = checkpoint_results(
         raw_intermediary_results, raw_openmoa, raw_results_output_csv
     )
 
     # Run experiment 5
-    result_capyARF5, raw_openmoa = openmoa_experiment(
+    result_openARF5, raw_openmoa = openmoa_experiment(
         dataset_name=dataset_names,
         learner_name="ARF5",
         stream=data,
@@ -312,14 +312,14 @@ def benchmark_classifiers_openmoa(
     )
 
     intermediary_results = checkpoint_results(
-        intermediary_results, result_capyARF5, results_output_csv
+        intermediary_results, result_openARF5, results_output_csv
     )
     raw_intermediary_results = checkpoint_results(
         raw_intermediary_results, raw_openmoa, raw_results_output_csv
     )
 
     # Run experiment 6
-    result_capyARF10, raw_openmoa = openmoa_experiment(
+    result_openARF10, raw_openmoa = openmoa_experiment(
         dataset_name=dataset_names,
         learner_name="ARF10",
         stream=data,
@@ -329,14 +329,14 @@ def benchmark_classifiers_openmoa(
     )
 
     intermediary_results = checkpoint_results(
-        intermediary_results, result_capyARF10, results_output_csv
+        intermediary_results, result_openARF10, results_output_csv
     )
     raw_intermediary_results = checkpoint_results(
         raw_intermediary_results, raw_openmoa, raw_results_output_csv
     )
 
     # Run experiment 7
-    result_capyARF30, raw_openmoa = openmoa_experiment(
+    result_openARF30, raw_openmoa = openmoa_experiment(
         dataset_name=dataset_names,
         learner_name="ARF30",
         stream=data,
@@ -346,14 +346,14 @@ def benchmark_classifiers_openmoa(
     )
 
     intermediary_results = checkpoint_results(
-        intermediary_results, result_capyARF30, results_output_csv
+        intermediary_results, result_openARF30, results_output_csv
     )
     raw_intermediary_results = checkpoint_results(
         raw_intermediary_results, raw_openmoa, raw_results_output_csv
     )
 
     # Run experiment 8
-    result_capyARF100, raw_openmoa = openmoa_experiment(
+    result_openARF100, raw_openmoa = openmoa_experiment(
         dataset_name=dataset_names,
         learner_name="ARF100",
         stream=data,
@@ -363,14 +363,14 @@ def benchmark_classifiers_openmoa(
     )
 
     intermediary_results = checkpoint_results(
-        intermediary_results, result_capyARF100, results_output_csv
+        intermediary_results, result_openARF100, results_output_csv
     )
     raw_intermediary_results = checkpoint_results(
         raw_intermediary_results, raw_openmoa, raw_results_output_csv
     )
 
     # Run experiment 9
-    result_capyARF100j4, raw_openmoa = openmoa_experiment(
+    result_openARF100j4, raw_openmoa = openmoa_experiment(
         dataset_name=dataset_names,
         learner_name="ARF100j4",
         stream=data,
@@ -384,7 +384,7 @@ def benchmark_classifiers_openmoa(
     )
 
     intermediary_results = checkpoint_results(
-        intermediary_results, result_capyARF100j4, results_output_csv
+        intermediary_results, result_openARF100j4, results_output_csv
     )
     raw_intermediary_results = checkpoint_results(
         raw_intermediary_results, raw_openmoa, raw_results_output_csv
@@ -578,7 +578,7 @@ def plot_performance(df, plot_prefix):
         plt.ylabel(measure.capitalize())
         plt.xticks(rotation=45)
 
-        # Capymoa bars
+        # Openmoa bars
         openmoa_means = openmoa_data[openmoa_data["learner"].isin(common_algorithms)][
             f"avg_{measure}"
         ]

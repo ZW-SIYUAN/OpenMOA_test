@@ -12,10 +12,10 @@ from .env import (
     openmoa_datasets_dir,
 )
 
-_CAPYMOA_PACKAGE_ROOT = Path(__file__).parent
+_OPENMOA_PACKAGE_ROOT = Path(__file__).parent
 
 
-class CapymoaImportError(RuntimeError):
+class OpenmoaImportError(RuntimeError):
     pass
 
 
@@ -30,20 +30,20 @@ def _get_java_home() -> Path:
         java_home = Path(os.environ["JAVA_HOME"])
 
         if not java_home.exists():
-            raise CapymoaImportError(
+            raise OpenmoaImportError(
                 f"The JAVA_HOME (`{java_home}`) environment variable is set, "
                 "but the path does not exist."
             )
     else:
         # We can find the java home by asking a special java program to print it for us
-        java_class_path = _CAPYMOA_PACKAGE_ROOT / "jar"
+        java_class_path = _OPENMOA_PACKAGE_ROOT / "jar"
         try:
             result = subprocess.run(
                 ["java", "-classpath", java_class_path.as_posix(), "Home"],
                 capture_output=True,
             )
         except FileNotFoundError:
-            raise CapymoaImportError(
+            raise OpenmoaImportError(
                 "Java not found ensure `java -version` runs successfully. "
                 "Alternatively, you may set the JAVA_HOME environment variable to the "
                 "path of your Java installation for non-standard installations."
@@ -72,9 +72,9 @@ def about():
     """
     java_version = jpype.java.lang.System.getProperty("java.version")
     print(f"OpenMOA {__version__}")
-    print(f"  CAPYMOA_DATASETS_DIR: {openmoa_datasets_dir()}")
-    print(f"  CAPYMOA_MOA_JAR:      {openmoa_moa_jar()}")
-    print(f"  CAPYMOA_JVM_ARGS:     {openmoa_jvm_args()}")
+    print(f"  OPENMOA_DATASETS_DIR: {openmoa_datasets_dir()}")
+    print(f"  OPENMOA_MOA_JAR:      {openmoa_moa_jar()}")
+    print(f"  OPENMOA_JVM_ARGS:     {openmoa_jvm_args()}")
     print(f"  JAVA_HOME:            {_get_java_home()}")
     print(f"  MOA version:          {_moa_hash()}")
     print(f"  JAVA version:         {java_version}")
@@ -91,7 +91,7 @@ def _start_jpype():
     # Add the MOA jar to the classpath
     moa_jar = openmoa_moa_jar()
     if not (moa_jar.exists() and moa_jar.is_file()):
-        raise CapymoaImportError(f"MOA jar not found at `{moa_jar}`.")
+        raise OpenmoaImportError(f"MOA jar not found at `{moa_jar}`.")
     jpype.addClassPath(moa_jar)
 
     # Start the JVM

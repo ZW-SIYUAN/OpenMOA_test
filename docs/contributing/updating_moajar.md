@@ -8,7 +8,7 @@ OpenMOA**. Before you start, make sure you have the following:
   of OpenMOA. If you have not, follow the instructions in the [installation guide](../installation.rst).
 
 - You must **NOT** have set the environment variables that would
-  override the default `moa.jar` location. `CAPYMOA_MOA_JAR` must be unset.
+  override the default `moa.jar` location. `OPENMOA_MOA_JAR` must be unset.
 
 ## Refreshing the `moa.jar`
 
@@ -52,9 +52,9 @@ they need to follow these steps:
    ```console
    $ python -c "import openmoa; openmoa.about()"
    OpenMOA 0.2.0
-      CAPYMOA_DATASETS_DIR: ...
-      CAPYMOA_MOA_JAR:      .../OpenMOA/src/openmoa/jar/moa.jar
-      CAPYMOA_JVM_ARGS:     ['-Xmx8g', '-Xss10M']
+      OPENMOA_DATASETS_DIR: ...
+      OPENMOA_MOA_JAR:      .../OpenMOA/src/openmoa/jar/moa.jar
+      OPENMOA_JVM_ARGS:     ['-Xmx8g', '-Xss10M']
       JAVA_HOME:            ...
       MOA version:          A SHA256 hash of the actual
       JAVA version:         ...

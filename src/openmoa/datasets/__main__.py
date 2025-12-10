@@ -20,7 +20,7 @@ from typing import Optional
     type=click.Path(exists=True, file_okay=False, dir_okay=True),
     default=None,
     help="Where should the datasets be downloaded to?"
-    + " Defaults to the environment variable CAPYMOA_DATASETS_DIR or `./data` if not set.",
+    + " Defaults to the environment variable OPENMOA_DATASETS_DIR or `./data` if not set.",
 )
 @click.option(
     "--format",

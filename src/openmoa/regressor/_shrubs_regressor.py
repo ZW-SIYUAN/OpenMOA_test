@@ -141,5 +141,5 @@ class ShrubsRegressor(_ShrubEnsembles, Regressor):
         all_proba = self._individual_proba(np.array([instance.x]))
         scaled_prob = sum([w * p for w, p in zip(all_proba, self.estimator_weights_)])
         combined_proba = np.sum(scaled_prob, axis=0)
-        # combined_proba should be a (1,) array, but the remaining CapyMoa code expects scalars
+        # combined_proba should be a (1,) array, but the remaining OpenMoa code expects scalars
         return combined_proba.item()

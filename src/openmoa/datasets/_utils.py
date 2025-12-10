@@ -15,7 +15,7 @@ def get_download_dir(download_dir: Optional[str] = None) -> Path:
     The download directory is determined by the following steps:
 
     #. If the ``download_dir`` parameter is provided, use that.
-    #. If the ``CAPYMOA_DATASETS_DIR`` environment variable is set, use that.
+    #. If the ``OPENMOA_DATASETS_DIR`` environment variable is set, use that.
     #. Otherwise, use the default download directory: ``./data``.
 
     :param download_dir: Override the download directory.

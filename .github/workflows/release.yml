@@ -139,7 +139,7 @@ jobs:
           tags: >-
             ${{ secrets.DOCKERHUB_USERNAME }}/jupyter-openmoa:${{ needs.release_pypi.outputs.tag }},
             ${{ secrets.DOCKERHUB_USERNAME }}/jupyter-openmoa:latest
-          build-args: CAPYMOA_VERSION=${{ needs.release_pypi.outputs.tag }}
+          build-args: OPENMOA_VERSION=${{ needs.release_pypi.outputs.tag }}
 
   website:
     name: Website

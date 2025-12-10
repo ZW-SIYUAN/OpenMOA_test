@@ -55,10 +55,10 @@ Once you have accessed the jupyter notebook interface, you can can play with the
 See the [Environment Variables](https://openmoa.org/api/env.html#module-openmoa.env)
 section for a list of environment variables that can be set to configure the tool.
 You can set these environment variables using the [`-e, --env`](https://docs.docker.com/reference/cli/docker/container/run/#env) flag when running the Docker. For example,
-to change the JVM arguments `CAPYMOA_JVM_ARGS`
+to change the JVM arguments `OPENMOA_JVM_ARGS`
 
 ```bash
-docker run -p 8888:8888 -e CAPYMOA_JVM_ARGS="-Xmx4g" jupyter-openmoa
+docker run -p 8888:8888 -e OPENMOA_JVM_ARGS="-Xmx4g" jupyter-openmoa
 ```
 
 ## Docker Compose Example
